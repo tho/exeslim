@@ -21,18 +21,38 @@ fi
 # *after* the sysctl writes below, which works only because /proc/sys happens
 # to be writable on the current runtime (verified: ip_unprivileged_port_start
 # is 0 on live VMs, and services running as exedev do bind :80). Do it first
-# regardless — if /proc/sys ever arrives read-only, the `-w` guards below
+# regardless: if /proc/sys ever arrives read-only, the `-w` guards below
 # would silently skip and low-port binding would break with no error.
 mount -o remount,rw /proc/sys 2>/dev/null || true
 
+# A missing or read-only sysctl is normal on some container runtimes. Keep
+# booting in that case rather than turning a hardening preference into an
+# unavailable VM.
+set_sysctl_if_writable() {
+	local key=$1 value=$2 path
+	path="/proc/sys/${key//./\/}"
+	[[ -w "$path" ]] && printf '%s\n' "$value" >"$path"
+}
+
 # Let unprivileged services bind :80/:443 directly.
-if [[ -w /proc/sys/net/ipv4/ip_unprivileged_port_start ]]; then
-	printf '0\n' >/proc/sys/net/ipv4/ip_unprivileged_port_start
-fi
-# Absent entirely on VMs without IPv6 sysctls; the guard handles that.
-if [[ -w /proc/sys/net/ipv6/ip_unprivileged_port_start ]]; then
-	printf '0\n' >/proc/sys/net/ipv6/ip_unprivileged_port_start
-fi
+set_sysctl_if_writable net.ipv4.ip_unprivileged_port_start 0
+# Absent entirely on VMs without IPv6 sysctls; the helper handles that.
+set_sysctl_if_writable net.ipv6.ip_unprivileged_port_start 0
+
+# Do not accept IPv4 ICMP redirects globally.
+set_sysctl_if_writable net.ipv4.conf.all.accept_redirects 0
+# New interfaces default to not accepting IPv4 ICMP redirects.
+set_sysctl_if_writable net.ipv4.conf.default.accept_redirects 0
+# Do not accept IPv6 Redirect messages globally.
+set_sysctl_if_writable net.ipv6.conf.all.accept_redirects 0
+# New interfaces default to not accepting IPv6 Redirect messages.
+set_sysctl_if_writable net.ipv6.conf.default.accept_redirects 0
+# Disable acceptance of IPv4 source-routed packets globally.
+set_sysctl_if_writable net.ipv4.conf.all.accept_source_route 0
+# New interfaces default to rejecting IPv4 source routing.
+set_sysctl_if_writable net.ipv4.conf.default.accept_source_route 0
+# Do not send IPv4 ICMP redirects.
+set_sysctl_if_writable net.ipv4.conf.all.send_redirects 0
 
 echo "Starting systemd..."
 exec /sbin/init --log-target=syslog --show-status=true

@@ -1,0 +1,13 @@
+# Probe for the svc- hardening profile. Not shipped in the image: install by
+# hand on an exe.dev VM, start, read the journal, remove. See
+# docs/internals.md#validating-the-hardening-profile.
+#
+# No hardening settings here on purpose: the base image's svc- drop-in
+# supplies all of them, which is what the probe is checking.
+
+[Unit]
+Description=exeslim hardening probe
+
+[Service]
+ExecStart=/usr/local/bin/svc-probe
+StateDirectory=svc-probe

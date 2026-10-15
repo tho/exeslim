@@ -1,0 +1,127 @@
+#!/bin/bash
+# svc-check UNIT: fail unless UNIT runs under the exeslim svc- hardening
+# profile as installed, judged by the effective properties systemd reports
+# rather than by reading unit files. Meant for a derived image's CI, inside
+# the booted image:
+#
+#   docker exec <container> svc-check svc-<app>.service
+#
+# What it checks: the name starts with svc- (otherwise the unit silently gets
+# no profile); the drop-in is applied; each setting the profile makes has its
+# profile value; none of ReadWritePaths=, BindPaths=, BindReadOnlyPaths= or
+# SupplementaryGroups= is set; User= does not name a static account; and no
+# Exec*= command carries a +, ! or !! prefix. Prints every mismatch, then exits
+# 1. It is not exhaustive: a key the profile does not set and this list does
+# not name (a new mount, an Environment= secret) passes unseen.
+#
+# A deliberate override (a fixed User=, say) fails here by design: write your
+# own assertion for that image instead.
+
+set -euo pipefail
+
+unit=${1:?usage: svc-check svc-<app>.service}
+dropin=/etc/systemd/system/svc-.service.d/50-hardening.conf
+
+# Effective value of each property the profile sets. MemoryMax is handled
+# separately: 80% resolves to bytes that depend on the VM.
+declare -A want=(
+	[DynamicUser]=yes
+	[PrivateTmp]=yes
+	[ProtectSystem]=strict
+	[ProtectHome]=yes
+	[PrivateDevices]=yes
+	[NoNewPrivileges]=yes
+	[CapabilityBoundingSet]=""
+	[AmbientCapabilities]=""
+	[RestrictAddressFamilies]='AF_INET AF_INET6'
+	[RestrictNamespaces]=yes
+	[ProtectKernelTunables]=yes
+	[ProtectKernelModules]=yes
+	[ProtectKernelLogs]=yes
+	[ProtectControlGroups]=yes
+	[ProtectClock]=yes
+	[ProtectHostname]=yes
+	[ProtectProc]=invisible
+	[ProcSubset]=pid
+	[LockPersonality]=yes
+	[RestrictRealtime]=yes
+	[MemoryDenyWriteExecute]=yes
+	[SystemCallErrorNumber]=1 # EPERM
+	[SystemCallArchitectures]=native
+	[UMask]=0077
+	[TasksMax]=512
+	[CPUWeight]=50
+	[Restart]=on-failure
+	[RestartUSec]=2s
+	# Not set by the profile; any value reopens what it closes.
+	[ReadWritePaths]=""
+	[BindPaths]=""
+	[BindReadOnlyPaths]=""
+	[SupplementaryGroups]=""
+)
+
+fail=0
+bad() {
+	echo "svc-check: $unit: $*" >&2
+	fail=1
+}
+
+[[ $unit == svc-* ]] || bad "name does not start with svc-, so the profile does not apply"
+
+state=$(systemctl show --property=LoadState --value -- "$unit")
+if [[ $state != loaded ]]; then
+	bad "LoadState is '$state', not 'loaded'"
+	exit 1
+fi
+
+declare -A got=()
+execs=()
+props=(DropInPaths MemoryMax SystemCallFilter User "${!want[@]}"
+	ExecConditionEx ExecStartPreEx ExecStartEx ExecStartPostEx ExecReloadEx ExecStopEx ExecStopPostEx)
+while IFS= read -r line; do
+	# One line per command, so Exec*Ex keys can repeat.
+	if [[ $line == Exec*Ex=* ]]; then
+		execs+=("$line")
+	else
+		got[${line%%=*}]=${line#*=}
+	fi
+done < <(systemctl show --property="$(IFS=,; echo "${props[*]}")" -- "$unit")
+
+[[ " ${got[DropInPaths]-} " == *" $dropin "* ]] || bad "DropInPaths does not include $dropin"
+mapfile -t keys < <(printf '%s\n' "${!want[@]}" | sort)
+for key in "${keys[@]}"; do
+	[[ ${got[$key]-} == "${want[$key]}" ]] || bad "$key: want '${want[$key]}' got '${got[$key]-}'"
+done
+[[ -n ${got[MemoryMax]-} && ${got[MemoryMax]} != infinity ]] ||
+	bad "MemoryMax: want a limit got '${got[MemoryMax]-}'"
+# The resolved allow list is long and version-specific, so check its shape: an
+# allow list (no leading ~) without samples from @privileged and @resources.
+filter=${got[SystemCallFilter]-}
+if [[ -z $filter || $filter == '~'* ]]; then
+	bad "SystemCallFilter: want an allow list got '$filter'"
+else
+	for call in setuid chroot bpf capset mount setrlimit setpriority; do
+		[[ " $filter " != *" $call "* ]] || bad "SystemCallFilter: allows $call"
+	done
+fi
+# DynamicUser= falls back to an existing static account named by User=
+# (exedev, say) and runs as it.
+user=${got[User]-}
+if [[ -n $user ]] && cut -d: -f1 /etc/passwd | grep -qxF -- "$user"; then
+	bad "User: '$user' is a static account, so DynamicUser= does not apply"
+fi
+# + runs a command with full privileges, ! and !! skip the user switch.
+for line in "${execs[@]}"; do
+	flags=${line#*flags=}
+	flags=${flags%% ;*}
+	path=${line#*path=}
+	path=${path%% ;*}
+	case " $flags " in
+	*" privileged "* | *" no-setuid "* | *" ambient "*)
+		bad "${line%%=*}: $path runs with flags '$flags'"
+		;;
+	esac
+done
+
+((fail == 0)) || exit 1
+echo "svc-check: $unit: hardened"

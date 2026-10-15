@@ -1,24 +1,8 @@
-You are running in an exe.dev VM.
+# Developing exeslim
 
-https://exe.dev/docs/proxy.md has details about the exe.dev HTTPS proxy.
+This repo builds exeslim, a minimal exe.dev base image for single-service
+deployment VMs. This file is for agents working on the repo.
 
-Only use documented exe.dev features (see https://exe.dev/docs.md). Undocumented local endpoints are internal infrastructure—unstable and unsupported.
-
-## This VM runs exeslim, not exeuntu
-
-It is a deployment target: a minimal base carrying systemd, TLS roots and curl,
-and nothing else. Do not assume the usual exeuntu toolbox is present.
-
-**Not installed:** compiler/`build-essential`, python, node, Go, uv, git,
-docker, nginx, Chrome. `apt` works, so `sudo apt-get install <pkg>` is fine for
-anything you genuinely need — but prefer building artifacts elsewhere and
-shipping them here, which is how this box is meant to be used.
-
-**Services are systemd units.** Start/stop with `systemctl`, and read logs with
-`journalctl -u <name>` — journald storage is persistent, and with no toolchain
-on the box it is the main debugging surface.
-
-**The app is normally a prebuilt binary** deployed by `scp`/`rsync` from a
-laptop or CI, then restarted via systemd. Anything you install directly on the
-VM is lost if it is recreated from a fresh image, so durable changes belong in
-the deploying repo, not here.
+`image/agent-context.md` is not addressed to you. The Dockerfile copies it into
+the image as `~/.config/shelley/AGENTS.md`, for agents running on VMs booted
+from exeslim. Edit it only to change what those agents are told.

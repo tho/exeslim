@@ -1,0 +1,18 @@
+# Named svc-<app>.service so the base image's hardening drop-in applies. No
+# hardening settings here: that is the drop-in's job, and svc-check fails the
+# build if it is not in force. Only what this app needs is declared.
+
+[Unit]
+Description=counter example service
+
+[Service]
+ExecStart=/usr/local/bin/counter
+# Writable, persistent, owned by the service's dynamic UID. Lives at
+# /var/lib/private/counter, reached through the /var/lib/counter symlink.
+StateDirectory=counter
+# Root-owned file provisioned on the VM after `new`, never baked into the
+# image. Until it exists the unit fails to start (243/CREDENTIALS).
+LoadCredential=token:/etc/counter/token
+
+[Install]
+WantedBy=multi-user.target

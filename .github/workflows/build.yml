@@ -3,13 +3,13 @@ name: build
 on:
   push:
     branches: [main]
-  # Build (but never publish) on PRs. Without this, a dependency PR — a base
-  # image digest bump, or a major Actions bump — shows zero checks and can only
+  # Build (but never publish) on PRs. Without this, a dependency PR (a base
+  # image digest bump, or a major Actions bump) shows zero checks and can only
   # fail after merge, on the run that publishes :latest.
   pull_request:
     branches: [main]
   # Weekly rebuild picks up Ubuntu security updates. exe.dev VMs ship with the
-  # apt-daily timers masked, so rebuilding the image is how patches land —
+  # apt-daily timers masked, so rebuilding the image is how patches land;
   # recreate or rebase a VM to pick them up.
   schedule:
     - cron: '0 4 * * 1'
@@ -21,7 +21,7 @@ permissions:
 
 # Serialise publishes so the newest merge is the one that ends up on :latest.
 # Merging several PRs at once starts overlapping builds, and without this a
-# slower final build can be overwritten by an earlier one — leaving :latest
+# slower final build can be overwritten by an earlier one, leaving :latest
 # pointing at an intermediate commit. Observed: five merges, five concurrent
 # builds, correct only by luck of finish order.
 #
@@ -38,7 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       # Skipped on PRs: nothing is pushed there, and a fork PR only ever gets a
       # read-only GITHUB_TOKEN, so attempting a registry login would just fail.
@@ -49,7 +49,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # exe.dev caches mutable tags — a VM created shortly after a push can be
+      # exe.dev caches mutable tags: a VM created shortly after a push can be
       # served a stale `:latest`, so publish something immutable to pin.
       #
       # Why the build id is date + run_number + run_attempt:
@@ -57,7 +57,7 @@ jobs:
       #   <sha>         the scheduled rebuild reuses the same commit
       #   <run_number>  stable across re-runs of the same run, so a re-run
       #                 would overwrite the tag it is supposed to fix
-      #   <run_attempt> increments per re-run — this is what closes the gap
+      #   <run_attempt> increments per re-run; this is what closes the gap
       - id: tag
         run: |
           {
@@ -66,11 +66,63 @@ jobs:
             echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } >> "$GITHUB_OUTPUT"
 
+      # Build once into the local Docker image store so the checks below can
+      # run against exactly what gets published. Same build-args as the push
+      # step, so that step is a buildx cache hit rather than a second build.
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          build-args: |
+            BUILD_ID=${{ steps.tag.outputs.build }}
+          tags: exeslim:ci
+          provenance: false
+          sbom: false
+
+      # The svc- hardening profile, checked two ways before anything is
+      # published. Offline: systemd-analyze, inside the image (its systemd is
+      # the one that matters), on the probe unit and both example units with
+      # the drop-in applied; threshold 20 means exposure 2.0, and a unit the
+      # drop-in misses scores ~9.4. Booted: each example built on this image
+      # (`--builder default`, because setup-buildx made its container builder
+      # the default and that cannot see images loaded into Docker), run under
+      # systemd, then svc-check on its effective properties. See
+      # docs/internals.md#validating-the-hardening-profile.
+      - name: Check the svc- hardening profile
+        run: |
+          set -euo pipefail
+          for x in hello counter; do
+            docker build --builder default --build-arg BASE=exeslim:ci \
+              -t "exeslim-$x:ci" "examples/$x"
+          done
+
+          # verify also checks ExecStart exists; any executable will do.
+          docker run --rm -v "$PWD/probe:/probe:ro" exeslim:ci bash -euc '
+            cp /probe/svc-probe.service /etc/systemd/system/
+            ln -s /usr/bin/true /usr/local/bin/svc-probe
+            systemd-analyze verify svc-probe.service
+            systemd-analyze security --offline=true --threshold=20 svc-probe.service'
+          for x in hello counter; do
+            docker run --rm "exeslim-$x:ci" bash -euc "
+              systemd-analyze verify svc-$x.service
+              systemd-analyze security --offline=true --threshold=20 svc-$x.service"
+          done
+
+          for x in hello counter; do
+            docker run -d --name "$x" --privileged --tmpfs /run --tmpfs /run/lock "exeslim-$x:ci"
+            # "degraded" is expected: systemd-growfs-root fails in Docker.
+            timeout 120 bash -c "until [[ \$(docker exec $x systemctl is-system-running 2>/dev/null) =~ ^(running|degraded)\$ ]]; do sleep 1; done"
+            docker exec "$x" svc-check "svc-$x.service"
+          done
+          # counter has no token in CI, so it stays down; hello must answer.
+          docker exec hello curl -fsS --retry 10 --retry-connrefused --retry-delay 1 http://127.0.0.1:8000/
+
       - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           platforms: linux/amd64
-          # PRs build only — validation without publishing.
+          # PRs build only: validation without publishing.
           push: ${{ github.event_name != 'pull_request' }}
           # Overrides the "24.04" version label inherited from ubuntu:24.04.
           build-args: |
@@ -83,10 +135,10 @@ jobs:
           # Moving:    :latest, :<date>, :<sha>
           # Immutable: :<date>.<run_number>.<run_attempt>
           tags: |
-            ghcr.io/ryanlewis/exeslim:latest
-            ghcr.io/ryanlewis/exeslim:${{ steps.tag.outputs.date }}
-            ghcr.io/ryanlewis/exeslim:${{ steps.tag.outputs.build }}
-            ghcr.io/ryanlewis/exeslim:${{ github.sha }}
+            ghcr.io/tho/exeslim:latest
+            ghcr.io/tho/exeslim:${{ steps.tag.outputs.date }}
+            ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }}
+            ghcr.io/tho/exeslim:${{ github.sha }}
           # exe.dev reads image metadata (Cmd, Labels, ExposedPorts) directly.
           # Provenance/SBOM turn the push into an attestation manifest list,
           # which can hide that metadata from a plain OCI pull.

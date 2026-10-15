@@ -1,0 +1,40 @@
+version: 2
+
+updates:
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:00"
+      timezone: Etc/UTC
+    cooldown:
+      default-days: 1
+    commit-message:
+      prefix: "chore(deps)"
+    ignore:
+      # Keep the image on Ubuntu 24.04 LTS. Digest updates to this tag still
+      # flow, while moving to another Ubuntu release remains a human decision.
+      - dependency-name: ubuntu
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:00"
+      timezone: Etc/UTC
+    cooldown:
+      default-days: 5
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
