@@ -3,13 +3,13 @@ name: build
 on:
   push:
     branches: [main]
-  # Build (but never publish) on PRs. Without this, a dependency PR — a base
-  # image digest bump, or a major Actions bump — shows zero checks and can only
+  # Build (but never publish) on PRs. Without this, a dependency PR (a base
+  # image digest bump, or a major Actions bump) shows zero checks and can only
   # fail after merge, on the run that publishes :latest.
   pull_request:
     branches: [main]
   # Weekly rebuild picks up Ubuntu security updates. exe.dev VMs ship with the
-  # apt-daily timers masked, so rebuilding the image is how patches land —
+  # apt-daily timers masked, so rebuilding the image is how patches land;
   # recreate or rebase a VM to pick them up.
   schedule:
     - cron: '0 4 * * 1'
@@ -21,16 +21,16 @@ permissions:
 
 # Serialise publishes so the newest merge is the one that ends up on :latest.
 # Merging several PRs at once starts overlapping builds, and without this a
-# slower final build can be overwritten by an earlier one — leaving :latest
+# slower final build can be overwritten by an earlier one, leaving :latest
 # pointing at an intermediate commit. Observed: five merges, five concurrent
 # builds, correct only by luck of finish order.
 #
-# cancel-in-progress is deliberately false. Cancelling would abandon a build
-# that had already published its immutable :<date>.<run>.<attempt> tag, and
-# those are the tags people pin.
+# Only PR builds are cancelled by a newer push: they never publish. On main,
+# cancelling would abandon a build that had already published its immutable
+# :<date>.<run>.<attempt> tag, and those are the tags people pin.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
@@ -38,18 +38,19 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
-      # Skipped on PRs: nothing is pushed there, and a fork PR only ever gets a
-      # read-only GITHUB_TOKEN, so attempting a registry login would just fail.
-      - if: github.event_name != 'pull_request'
+      # Only main publishes. Skipped on PRs, where a fork only ever gets a
+      # read-only GITHUB_TOKEN, and on manual runs from other branches, which
+      # would otherwise push unmerged code to :latest.
+      - if: github.ref == 'refs/heads/main'
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # exe.dev caches mutable tags — a VM created shortly after a push can be
+      # exe.dev caches mutable tags: a VM created shortly after a push can be
       # served a stale `:latest`, so publish something immutable to pin.
       #
       # Why the build id is date + run_number + run_attempt:
@@ -57,21 +58,136 @@ jobs:
       #   <sha>         the scheduled rebuild reuses the same commit
       #   <run_number>  stable across re-runs of the same run, so a re-run
       #                 would overwrite the tag it is supposed to fix
-      #   <run_attempt> increments per re-run — this is what closes the gap
+      #   <run_attempt> increments per re-run; this is what closes the gap
       - id: tag
         run: |
+          # Read the clock once, so a run crossing midnight cannot tag two days.
+          now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           {
-            echo "date=$(date -u +%Y-%m-%d)"
-            echo "build=$(date -u +%Y-%m-%d).${{ github.run_number }}.${{ github.run_attempt }}"
-            echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "date=${now%%T*}"
+            echo "build=${now%%T*}.${{ github.run_number }}.${{ github.run_attempt }}"
+            echo "created=$now"
           } >> "$GITHUB_OUTPUT"
 
-      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+      # Build once into the local Docker image store so the checks below can
+      # run against exactly what gets published. Same build-args as the push
+      # step, so that step is a buildx cache hit rather than a second build.
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           platforms: linux/amd64
-          # PRs build only — validation without publishing.
-          push: ${{ github.event_name != 'pull_request' }}
+          load: true
+          build-args: |
+            BUILD_ID=${{ steps.tag.outputs.build }}
+          tags: exeslim:ci
+          provenance: false
+          sbom: false
+
+      # The image, checked before anything is published. Unbooted: the
+      # metadata exe.dev reads, the build steps whose order or file name is
+      # load-bearing, and the svc- profile offline: systemd-analyze, inside the
+      # image (its systemd is the one that matters), on the probe unit and the
+      # hello example unit with the drop-in applied; threshold 20 means
+      # exposure 2.0, and a unit the drop-in misses scores ~9.4. Booted: hello
+      # built on this image (`--builder default`, because setup-buildx made its
+      # container builder the default and that cannot see images loaded into
+      # Docker), run under systemd, then svc-check on its effective
+      # properties, and svc-check shown to fail a deliberately bad drop-in.
+      # After boot only the unit Docker cannot run may have failed, init's
+      # sysctls and ufw must be in place, and hello must answer. See
+      # docs/internals.md#validating-the-hardening-profile.
+      - name: Check the image
+        run: |
+          set -euo pipefail
+          # The probe only ever runs by hand, so at least keep it compiling, on
+          # the Go image the example builds with: Dependabot tracks that one,
+          # and would not see a tag written here.
+          goimg=$(sed -n 's/^FROM \(golang:[^ ]*\).*/\1/p' examples/hello/Dockerfile)
+          docker run --rm -v "$PWD/probe:/src:ro" -w /src "$goimg" go vet ./...
+
+          docker build --builder default --build-arg BASE=exeslim:ci \
+            -t exeslim-hello:ci examples/hello
+
+          # What exe.dev reads from the image: the proxy port, the login user,
+          # and the version label that must override Ubuntu's "24.04".
+          meta=$(docker inspect exeslim:ci --format \
+            '{{json .Config.ExposedPorts}} {{index .Config.Labels "exe.dev/login-user"}} {{index .Config.Labels "org.opencontainers.image.version"}}')
+          [[ $meta == '{"8000/tcp":{}} exedev ${{ steps.tag.outputs.build }}' ]] ||
+            { echo "image metadata is wrong: $meta"; exit 1; }
+          # machine-id must be emptied after the last apt layer (#18), and the
+          # /tmp override only shadows Ubuntu's wipe-at-boot if the file name
+          # matches: with the stock D line, --remove empties /tmp.
+          docker run --rm exeslim:ci bash -euc '
+            [[ ! -s /etc/machine-id && $(readlink /var/lib/dbus/machine-id) == /etc/machine-id ]]
+            touch /tmp/keep && systemd-tmpfiles --remove && test -e /tmp/keep'
+
+          # verify also checks ExecStart exists; any executable will do.
+          docker run --rm -v "$PWD/probe:/probe:ro" exeslim:ci bash -euc '
+            cp /probe/svc-probe.service /etc/systemd/system/
+            ln -s /usr/bin/true /usr/local/bin/svc-probe
+            systemd-analyze verify svc-probe.service
+            systemd-analyze security --offline=true --threshold=20 svc-probe.service'
+          docker run --rm exeslim-hello:ci bash -euc '
+            systemd-analyze verify svc-hello.service
+            systemd-analyze security --offline=true --threshold=20 svc-hello.service'
+
+          docker run -d --name hello --privileged --tmpfs /run --tmpfs /run/lock exeslim-hello:ci
+          # "degraded" is expected: systemd-growfs-root fails in Docker.
+          timeout 120 bash -c 'until [[ $(docker exec hello systemctl is-system-running 2>/dev/null) =~ ^(running|degraded)$ ]]; do sleep 1; done'
+          docker exec hello svc-check svc-hello.service
+          failed=$(docker exec hello systemctl --failed --plain --no-legend | awk '{print $1}')
+          [[ -z $failed || $failed == systemd-growfs-root.service ]] ||
+            { echo "unexpected failed units: $failed"; exit 1; }
+          # Every sysctl init writes: its writable guard skips a misspelt key
+          # silently. IPv6 keys only where the runner has them, as in init.
+          for key in ipv4/ip_unprivileged_port_start ipv4/conf/all/send_redirects \
+              ipv4/conf/{all,default}/{accept_redirects,accept_source_route} \
+              ipv6/conf/{all,default}/accept_redirects; do
+            [[ $key == ipv6/* ]] && ! docker exec hello test -e "/proc/sys/net/$key" && continue
+            [[ $(docker exec hello cat "/proc/sys/net/$key") == 0 ]] ||
+              { echo "init's sysctl net/$key is not 0"; exit 1; }
+          done
+          # ufw-init exits 0 with ENABLED=no, so a clean boot alone does not
+          # show the firewall is up.
+          ufw=$(docker exec hello ufw status verbose)
+          { grep -qx 'Status: active' <<<"$ufw" &&
+            grep -q '^Default: deny (incoming), allow (outgoing)' <<<"$ufw"; } ||
+            { echo "ufw is not enforcing:"; echo "$ufw"; exit 1; }
+          docker exec hello curl -fsS --retry 10 --retry-connrefused --retry-delay 1 http://127.0.0.1:8000/
+
+          # One line per class of mismatch svc-check reports. Each must be
+          # reported by name, not just make svc-check fail.
+          docker exec hello bash -euc '
+            mkdir -p /etc/systemd/system/svc-hello.service.d
+            printf "%s\n" "[Service]" User=exedev Group=exedev ExecStartPre=+/bin/true \
+              "ExecStartPost=!/bin/true" RestrictAddressFamilies=AF_UNIX ReadWritePaths=/etc \
+              SupplementaryGroups=sudo SystemCallFilter=@privileged MemoryMax=infinity \
+              >/etc/systemd/system/svc-hello.service.d/90-bad.conf
+            systemctl daemon-reload'
+          if out=$(docker exec hello svc-check svc-hello.service 2>&1); then
+            echo "svc-check passed a bad unit"; exit 1
+          fi
+          for want in "User: 'exedev'" "Group: 'exedev'" ExecStartPreEx ExecStartPostEx \
+              RestrictAddressFamilies "ReadWritePaths:" "SupplementaryGroups:" \
+              "SystemCallFilter: allows" "MemoryMax:"; do
+            grep -qF -- "$want" <<<"$out" || { echo "svc-check missed $want:"; echo "$out"; exit 1; }
+          done
+
+      # The booted check's failures are otherwise mute: a boot-wait timeout
+      # exits 124 with nothing to read, and the weekly rebuild runs unattended.
+      - if: failure()
+        name: Dump the booted container
+        run: |
+          docker logs hello 2>&1 | tail -n 100 || true
+          docker exec hello systemctl --failed --no-pager || true
+          docker exec hello journalctl -b --no-pager | tail -n 200 || true
+
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64
+          # Only main publishes; PRs and other branches build only.
+          push: ${{ github.ref == 'refs/heads/main' }}
           # Overrides the "24.04" version label inherited from ubuntu:24.04.
           build-args: |
             BUILD_ID=${{ steps.tag.outputs.build }}
@@ -83,12 +199,35 @@ jobs:
           # Moving:    :latest, :<date>, :<sha>
           # Immutable: :<date>.<run_number>.<run_attempt>
           tags: |
-            ghcr.io/ryanlewis/exeslim:latest
-            ghcr.io/ryanlewis/exeslim:${{ steps.tag.outputs.date }}
-            ghcr.io/ryanlewis/exeslim:${{ steps.tag.outputs.build }}
-            ghcr.io/ryanlewis/exeslim:${{ github.sha }}
+            ghcr.io/tho/exeslim:latest
+            ghcr.io/tho/exeslim:${{ steps.tag.outputs.date }}
+            ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }}
+            ghcr.io/tho/exeslim:${{ github.sha }}
           # exe.dev reads image metadata (Cmd, Labels, ExposedPorts) directly.
           # Provenance/SBOM turn the push into an attestation manifest list,
           # which can hide that metadata from a plain OCI pull.
+          provenance: false
+          sbom: false
+
+      # The hello example, built on the base just published under its
+      # immutable tag, so it can be booted on exe.dev as is. Labels override
+      # the ones inherited from exeslim, which would otherwise describe the
+      # base.
+      - if: github.ref == 'refs/heads/main'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: examples/hello
+          platforms: linux/amd64
+          push: true
+          build-args: |
+            BASE=ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }}
+          labels: |
+            org.opencontainers.image.title=exeslim-hello
+            org.opencontainers.image.description=The hello example service from exeslim's examples/hello, on the exeslim base image.
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ steps.tag.outputs.created }}
+          tags: |
+            ghcr.io/tho/exeslim-hello:latest
+            ghcr.io/tho/exeslim-hello:${{ steps.tag.outputs.build }}
           provenance: false
           sbom: false

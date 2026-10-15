@@ -1,0 +1,12 @@
+# Named svc-<app>.service so the base image's hardening drop-in applies. No
+# hardening settings here: that is the drop-in's job, and svc-check fails the
+# build if it is not in force.
+
+[Unit]
+Description=hello example service
+
+[Service]
+ExecStart=/usr/local/bin/hello
+
+[Install]
+WantedBy=multi-user.target

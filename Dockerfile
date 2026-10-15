@@ -1,4 +1,4 @@
-# exeslim — a minimal exe.dev base image for deployment targets.
+# exeslim: a minimal exe.dev base image for deployment targets.
 #
 # exeuntu is deliberately a batteries-included agent workstation: it runs
 # `unminimize`, reinstalls every package to restore man pages, then pulls in
@@ -10,17 +10,17 @@
 # This image drops all of that but keeps every piece of exe.dev *platform*
 # wiring, correlated line-by-line against exeuntu's Dockerfile.
 #
-# NOT for interactive/agent VMs — no compiler, no python, no docker, no git.
+# NOT for interactive/agent VMs: no compiler, no python, no docker, no git.
 # Use exeuntu for those.
 
-FROM ubuntu:24.04@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517
+FROM ubuntu:24.04@sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55
 
 SHELL ["/bin/bash", "-euxo", "pipefail", "-c"]
 
 RUN apt-get update \
 	# Pull security/bugfix updates for packages already in the base layer.
 	# Without this we ship whatever was current when Canonical last rebuilt
-	# ubuntu:24.04, which can be months behind — and since the packages we
+	# ubuntu:24.04, which can be months behind, and since the packages we
 	# install by name are only a handful, everything else would stay stale
 	# no matter how often the weekly job reruns. Same reasoning as exeuntu.
 	&& DEBIAN_FRONTEND=noninteractive apt-get -y \
@@ -31,9 +31,15 @@ RUN apt-get update \
 		systemd systemd-sysv dbus dbus-user-session \
 		ca-certificates curl \
 		# iproute2 for `ss`. ~1 MB, and it is the difference between seeing
-		# and guessing when a unit is active but the proxy returns nothing —
-		# 0.0.0.0:8000 (proxy can reach it) vs 127.0.0.1:8000 (it cannot).
+		# and guessing when a unit is active but the proxy returns nothing:
+		# is anything listening on the proxy port, and which process is it?
 		iproute2 \
+		# UFW provides the runtime firewall: it denies all direct inbound
+		# network traffic. Observed, not documented by exe.dev: SSH and the
+		# reverse proxy arrive over VSOCK to exe-init, not the network
+		# interface, so this should not affect normal use. See
+		# docs/internals.md#whats-in-it.
+		ufw \
 		sudo tzdata locales \
 	# en_US + en_GB only; exeuntu installs locales-all, which is ~200 MB.
 	# en_US.UTF-8 is the default as the least surprising for anyone else who
@@ -47,18 +53,21 @@ RUN apt-get update \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
 
+# Observed, not documented by exe.dev: the platform supplies /etc/resolv.conf
+# as a plain file, so systemd-resolved has nothing to do. Remove it.
+RUN apt-get purge -y systemd-resolved
+
 # --- systemd, tuned for exe.dev's container-as-VM environment -----------------
 # Units that hang, fail noisily, or fight the platform. Masking is safe for
 # units that aren't installed, so this list can stay close to exeuntu's.
 # NB: ssh.service/ssh.socket are masked because exe.dev supplies its own sshd
-# from /exe.dev/bin — a distro sshd would contend for :22.
+# from /exe.dev/bin; a distro sshd would contend for :22.
 RUN systemctl mask -- \
 		getty.target \
 		console-getty.service \
 		keyboard-setup.service \
 		ssh.service \
 		ssh.socket \
-		systemd-resolved.service \
 		systemd-remount-fs.service \
 		systemd-sysusers.service \
 		systemd-update-done.service \
@@ -89,16 +98,25 @@ RUN systemctl mask -- \
 		etc-resolv.conf.mount \
 		etc-hosts.mount \
 		etc-hostname.mount \
-	# systemd-logind is disabled but NOT masked — per exeuntu, it is involved
+	# systemd-logind is disabled but NOT masked; per exeuntu, it is involved
 	# in populating the XDG runtime dir sockets.
 	# Braces keep `|| true` bound to the disable alone, so a failed mask above
 	# still aborts the build.
 	&& { systemctl disable systemd-logind.service || true; } \
 	&& { systemctl disable systemd-machine-id-commit.service systemd-firstboot.service systemd-sysctl.service || true; } \
 	&& mkdir -p /etc/systemd/system.conf.d \
-	&& printf '[Manager]\nLogLevel=info\nLogTarget=console\nSystemCallArchitectures=native\nDefaultOOMPolicy=continue\n' \
+	&& printf '[Manager]\nLogLevel=info\nSystemCallArchitectures=native\nDefaultOOMPolicy=continue\n' \
 		>/etc/systemd/system.conf.d/container-overrides.conf \
-	# Keep journals across reboots — `journalctl -u <svc>` is the only real
+	# Deny all direct inbound network traffic, permissive outbound. No
+	# exception for exe.dev: as observed (not documented), its SSH and proxy
+	# traffic arrives over VSOCK, which bypasses the network stack and so
+	# UFW. These rules stop anything else from reaching the guest over the
+	# actual network interface.
+	&& ufw default deny incoming \
+	&& ufw default allow outgoing \
+	&& sed -ri 's/^ENABLED=.*/ENABLED=yes/' /etc/ufw/ufw.conf \
+	&& systemctl enable ufw.service \
+	# Keep journals across reboots: `journalctl -u <svc>` is the only real
 	# debugging surface on a box with no toolchain.
 	&& mkdir -p /etc/systemd/journald.conf.d \
 	&& printf '[Journal]\nStorage=persistent\n' \
@@ -106,7 +124,7 @@ RUN systemctl mask -- \
 	&& systemctl set-default multi-user.target
 
 # CRITICAL: without this, systemd-growfs@-.service never runs and the root
-# filesystem stays at its original size when the disk is grown — so
+# filesystem stays at its original size when the disk is grown, so
 # `new --disk=50GB` or `resize` silently gives you an unexpanded fs.
 RUN echo '/dev/vda / ext4 defaults,x-systemd.growfs 0 1' >/etc/fstab
 
@@ -115,9 +133,15 @@ COPY tmpfiles-tmp.conf /etc/tmpfiles.d/tmp.conf
 
 # Makes `new --setup-script` work. Without this unit the flag is accepted and
 # then silently does nothing.
-COPY exe-setup.service /etc/systemd/system/exe-setup.service
-RUN chmod 644 /etc/systemd/system/exe-setup.service \
-	&& systemctl enable exe-setup.service
+COPY --chmod=0644 exe-setup.service /etc/systemd/system/exe-setup.service
+RUN systemctl enable exe-setup.service
+
+# Hardening profile for services. A prefix drop-in: it applies to every unit
+# named svc-<app>.service that a derived image installs, and the base ships no
+# such unit, so nothing here changes until one exists. svc-check lets a derived
+# image's CI assert the profile is in force. See docs/deploying.md.
+COPY --chmod=0644 image/svc-hardening.conf /etc/systemd/system/svc-.service.d/50-hardening.conf
+COPY --chmod=0755 image/svc-check /usr/local/bin/svc-check
 
 # --- exedev user -------------------------------------------------------------
 # Rename the stock ubuntu user (uid 1000) rather than delete/recreate, so uid,
@@ -129,6 +153,7 @@ RUN usermod -l exedev -c "exe.dev user" ubuntu \
 	&& usermod -aG sudo exedev \
 	&& sed -i 's/^ubuntu:/exedev:/' /etc/subuid /etc/subgid \
 	&& printf 'exedev ALL=(ALL) NOPASSWD:ALL\nDefaults:exedev verifypw=any\n' >/etc/sudoers.d/exedev \
+	&& chmod 0750 /etc/sudoers.d \
 	&& chmod 0440 /etc/sudoers.d/exedev \
 	# Linger populates /run/user/1000 so systemd --user works.
 	&& mkdir -p /var/lib/systemd/linger \
@@ -144,8 +169,10 @@ RUN printf 'export PATH="$HOME/.local/bin:$PATH"\nexport XDG_RUNTIME_DIR="/run/u
 # Agent context. No agent ships in this image, but one may be installed later
 # (`exe.dev/install-shelley`, or a hand-installed Claude/Codex/pi), and these
 # files cost ~1 KB. Canonical copy lives at the XDG path Shelley reads, with
-# the other agents symlinked to it — same layout as exeuntu.
-COPY AGENTS.md /home/exedev/.config/shelley/AGENTS.md
+# the other agents symlinked to it, same layout as exeuntu. The source is
+# image/agent-context.md: the repo's own AGENTS.md is for agents developing
+# exeslim, not for agents running on it.
+COPY image/agent-context.md /home/exedev/.config/shelley/AGENTS.md
 RUN mkdir -p /home/exedev/.claude /home/exedev/.codex /home/exedev/.pi \
 	&& ln -s /home/exedev/.config/shelley/AGENTS.md /home/exedev/.claude/CLAUDE.md \
 	&& ln -s /home/exedev/.config/shelley/AGENTS.md /home/exedev/.codex/AGENTS.md \
@@ -158,8 +185,7 @@ RUN mkdir -p /home/exedev/.claude /home/exedev/.codex /home/exedev/.pi \
 #
 # The file MUST be named `init`: exe.dev's exetini decides this is an init
 # from the basename and execs it rather than forking it.
-COPY init /usr/local/bin/init
-RUN chmod +x /usr/local/bin/init
+COPY --chmod=0755 init /usr/local/bin/init
 
 # Empty the machine ID that systemd's and dbus's package configuration baked in
 # during the apt layer above. Left as-is, every VM created from this image
@@ -185,7 +211,7 @@ EXPOSE 8000
 #                            interactive login already inherits the client's.
 #
 # Only en_US.UTF-8 and en_GB.UTF-8 are generated (exeuntu ships locales-all at
-# ~200 MB). Connecting with any other LANG gives setlocale warnings — add it to
+# ~200 MB). Connecting with any other LANG gives setlocale warnings; add it to
 # locale-gen above if you need one.
 ENV LANG=en_US.UTF-8
 
@@ -204,8 +230,8 @@ LABEL "exe.dev/login-user"="exedev"
 ARG BUILD_ID=dev
 LABEL org.opencontainers.image.title="exeslim" \
 	org.opencontainers.image.description="Minimal exe.dev base image for deployment targets: systemd and full platform wiring, without the agent workstation toolchain." \
-	org.opencontainers.image.source="https://github.com/ryanlewis/exeslim" \
-	org.opencontainers.image.url="https://github.com/ryanlewis/exeslim" \
+	org.opencontainers.image.source="https://github.com/tho/exeslim" \
+	org.opencontainers.image.url="https://github.com/tho/exeslim" \
 	org.opencontainers.image.licenses="MIT" \
 	org.opencontainers.image.base.name="docker.io/library/ubuntu:24.04" \
 	org.opencontainers.image.version="${BUILD_ID}"
