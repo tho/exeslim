@@ -205,6 +205,10 @@ jobs:
             { echo "Shelley variant metadata is wrong: $meta"; exit 1; }
           base=$(docker inspect ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }} --format '{{index .Config.Labels "exe.dev/install-shelley"}}')
           [[ $base != true ]] || { echo "base image has exe.dev/install-shelley=true"; exit 1; }
+          # The label only installs the binary; the enabled socket starts it.
+          docker run --rm --entrypoint test ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }}-shelley \
+            -L /etc/systemd/system/sockets.target.wants/shelley.socket ||
+            { echo "shelley.socket is not enabled"; exit 1; }
 
       # The booted check's failures are otherwise mute: a boot-wait timeout
       # exits 124 with nothing to read, and the weekly rebuild runs unattended.

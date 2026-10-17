@@ -54,9 +54,9 @@ Both variants use the same build id. Only the build-id tags are immutable;
 exe.dev caches all Shelley tags, including `:latest-shelley`, for 24 hours.
 The Shelley variant adds the
 [documented installation label](https://exe.dev/docs/customization.md#custom-image-properties).
-exe.dev installs Shelley when creating the VM. The image adds no service or
-socket units; startup through the platform installer still needs verification
-on an exe.dev VM. The application port remains 8000, but 9999 is Shelley's, so
+exe.dev installs the Shelley binary when creating the VM; the label alone does
+not start it, so the variant also ships exeuntu's socket-activated
+`shelley.socket` and `shelley.service` units. The application port remains 8000, but 9999 is Shelley's, so
 do not bind a service to it. The variant does not add compilers, Git, or other
 workstation tools.
 

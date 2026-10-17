@@ -57,9 +57,10 @@ exeuntu. It carries exeuntu's platform guidance plus a note that this box has no
 toolchain, so an agent doesn't waste a turn discovering there's no compiler.
 For Shelley, use the `exeslim:<build-id>-shelley` variant (see
 [operating](operating.md#picking-a-tag)). It adds the documented
-`exe.dev/install-shelley=true` label. exe.dev installs the binary at VM creation;
-the image itself bundles neither the binary nor service/socket units. Startup
-with only the label still needs verification on an exe.dev VM.
+`exe.dev/install-shelley=true` label. exe.dev installs the binary at VM creation
+but does not start it, so the variant ships exeuntu's `shelley.socket` and
+`shelley.service` with the socket enabled (`image/shelley.*`, minus the
+`/headless-shell` PATH entry).
 
 **The service hardening profile** is exeslim's own, with no exeuntu counterpart:
 a prefix drop-in, `/etc/systemd/system/svc-.service.d/50-hardening.conf`, that

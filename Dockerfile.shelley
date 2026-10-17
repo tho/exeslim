@@ -1,7 +1,13 @@
-# exe.dev installs the Shelley binary when creating a VM from this image.
+# exe.dev installs the Shelley binary at /usr/local/bin/shelley when creating a
+# VM from this image, but does not start it: the image must ship the units.
+# These mirror exeuntu's (socket activation on 127.0.0.1:9999), minus the
+# /headless-shell PATH entry.
 ARG BASE=ghcr.io/tho/exeslim:latest
 FROM ${BASE}
 ARG BASE
+
+COPY --chmod=0644 image/shelley.socket image/shelley.service /etc/systemd/system/
+RUN systemctl enable shelley.socket
 
 EXPOSE 9999
 

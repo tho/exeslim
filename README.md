@@ -14,7 +14,8 @@ but exe.dev caches it for up to an hour
 ([picking a tag](docs/operating.md#picking-a-tag)).
 
 For Shelley support, use `ghcr.io/tho/exeslim:<build-id>-shelley` instead.
-The variant sets exe.dev's Shelley installation label and retains the minimal
+The variant sets exe.dev's Shelley installation label, ships the units that
+start Shelley on boot, and retains the minimal
 package set described below.
 
 ## Why
