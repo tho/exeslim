@@ -181,9 +181,10 @@ jobs:
             grep -qF -- "$want" <<<"$out" || { echo "svc-check missed $want:"; echo "$out"; exit 1; }
           done
 
-      # Build and load the variant before checking it, using the same base
-      # and cache as its publish step. Dockerfile.shelley overrides the OCI
-      # labels that describe the image; the rest are inherited from the base.
+      # Build and load the variants before checking them, using the same bases
+      # and cache as their publish steps. Each Dockerfile overrides the OCI
+      # labels that describe the image; the rest are inherited from its base.
+      # The full variant builds on the Shelley one.
       - name: Build the Shelley variant
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
@@ -197,27 +198,68 @@ jobs:
           provenance: false
           sbom: false
 
-      - name: Check the Shelley variant
+      - name: Build the Shelley full variant
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: Dockerfile.shelley-full
+          platforms: linux/amd64
+          load: true
+          build-args: |
+            BASE=ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }}-shelley
+          tags: ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }}-shelley-full
+          provenance: false
+          sbom: false
+
+      # Unbooted: metadata, the enabled socket (the label only installs the
+      # binary; the socket starts it) and tools for both variants, and the full
+      # variant's feature tools. Booted: the full variant's socket listens on 9999.
+      - name: Check the Shelley variants
         run: |
-          meta=$(docker inspect ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }}-shelley --format \
-            '{{json .Config.ExposedPorts}} {{index .Config.Labels "exe.dev/login-user"}} {{index .Config.Labels "exe.dev/install-shelley"}} {{index .Config.Labels "org.opencontainers.image.version"}}')
-          [[ $meta == '{"8000/tcp":{},"9999/tcp":{}} exedev true ${{ steps.tag.outputs.build }}' ]] ||
-            { echo "Shelley variant metadata is wrong: $meta"; exit 1; }
+          set -euo pipefail
           base=$(docker inspect ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }} --format '{{index .Config.Labels "exe.dev/install-shelley"}}')
           [[ $base != true ]] || { echo "base image has exe.dev/install-shelley=true"; exit 1; }
-          # The label only installs the binary; the enabled socket starts it.
-          docker run --rm --entrypoint test ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }}-shelley \
-            -L /etc/systemd/system/sockets.target.wants/shelley.socket ||
-            { echo "shelley.socket is not enabled"; exit 1; }
+          for v in shelley shelley; do
+            img=ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }}-$v
+            meta=$(docker inspect "$img" --format \
+              '{{json .Config.ExposedPorts}} {{index .Config.Labels "exe.dev/login-user"}} {{index .Config.Labels "exe.dev/install-shelley"}} {{index .Config.Labels "org.opencontainers.image.version"}} {{index .Config.Labels "org.opencontainers.image.title"}}')
+            [[ $meta == "{\"8000/tcp\":{},\"9999/tcp\":{}} exedev true ${{ steps.tag.outputs.build }} exeslim-$v" ]] ||
+              { echo "$v metadata is wrong: $meta"; exit 1; }
+            # Both variants' apt layers run after the base emptied machine-id
+            # (#18), so check it again.
+            docker run --rm "$img" bash -euc '
+              test -L /etc/systemd/system/sockets.target.wants/shelley.socket
+              [[ ! -s /etc/machine-id ]]
+              for b in jq sqlite3 lsof; do command -v "$b" >/dev/null || { echo "missing $b"; exit 1; }; done' ||
+              { echo "$v: shelley.socket, machine-id or tools are wrong"; exit 1; }
+          done
+
+          docker run --rm ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }}-shelley-full bash -euc '
+            for b in /headless-shell/headless-shell ffmpeg ffprobe convert git; do
+              command -v "$b" >/dev/null || { echo "missing $b"; exit 1; }
+            done
+            ! ldd /headless-shell/headless-shell | grep "not found"
+            convert -list format | grep -q HEIC
+            ffmpeg -hide_banner -encoders | grep -q libx264'
+
+          docker run -d --name shelley --privileged --tmpfs /run --tmpfs /run/lock ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }}-shelley-full
+          timeout 120 bash -c 'until [[ $(docker exec shelley systemctl is-system-running 2>/dev/null) =~ ^(running|degraded)$ ]]; do sleep 1; done'
+          failed=$(docker exec shelley systemctl --failed --plain --no-legend | awk '{print $1}')
+          [[ -z $failed || $failed == systemd-growfs-root.service ]] ||
+            { echo "unexpected failed units: $failed"; exit 1; }
+          [[ -n $(docker exec shelley ss -ltnH 'sport = :9999') ]] ||
+            { echo "shelley.socket is not listening on 9999"; exit 1; }
 
       # The booted check's failures are otherwise mute: a boot-wait timeout
       # exits 124 with nothing to read, and the weekly rebuild runs unattended.
       - if: failure()
         name: Dump the booted container
         run: |
-          docker logs hello 2>&1 | tail -n 100 || true
-          docker exec hello systemctl --failed --no-pager || true
-          docker exec hello journalctl -b --no-pager | tail -n 200 || true
+          for c in hello shelley; do
+            docker logs "$c" 2>&1 | tail -n 100 || true
+            docker exec "$c" systemctl --failed --no-pager || true
+            docker exec "$c" journalctl -b --no-pager | tail -n 200 || true
+          done
 
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
@@ -269,8 +311,9 @@ jobs:
           provenance: false
           sbom: false
 
-      # Derive the Shelley variant from this run's immutable base image. Last,
-      # so a failure here leaves only the -shelley tags stale.
+      # Derive the Shelley variants from this run's immutable base image, the
+      # full one from the Shelley one. Last, so a failure here leaves only the
+      # Shelley tags stale.
       - if: github.ref == 'refs/heads/main'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
@@ -285,5 +328,22 @@ jobs:
             ghcr.io/tho/exeslim:${{ steps.tag.outputs.date }}-shelley
             ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }}-shelley
             ghcr.io/tho/exeslim:${{ github.sha }}-shelley
+          provenance: false
+          sbom: false
+
+      - if: github.ref == 'refs/heads/main'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: Dockerfile.shelley-full
+          platforms: linux/amd64
+          push: true
+          build-args: |
+            BASE=ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }}-shelley
+          tags: |
+            ghcr.io/tho/exeslim:latest-shelley-full
+            ghcr.io/tho/exeslim:${{ steps.tag.outputs.date }}-shelley-full
+            ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }}-shelley-full
+            ghcr.io/tho/exeslim:${{ github.sha }}-shelley-full
           provenance: false
           sbom: false

@@ -13,10 +13,11 @@ build id looks like `2026-07-26.20.1`. `:latest` is fine for trying it out,
 but exe.dev caches it for up to an hour
 ([picking a tag](docs/operating.md#picking-a-tag)).
 
-For Shelley support, use `ghcr.io/tho/exeslim:<build-id>-shelley` instead.
-The variant sets exe.dev's Shelley installation label, ships the units that
-start Shelley on boot, and retains the minimal
-package set described below.
+For Shelley, use `ghcr.io/tho/exeslim:<build-id>-shelley` instead. It sets
+exe.dev's Shelley installation label, starts Shelley on boot, and adds jq,
+sqlite3 and lsof to the minimal package set described below. For all of
+Shelley's features, `<build-id>-shelley-full` also adds headless Chrome,
+ffmpeg, ImageMagick and Git (~1.4 GB).
 
 ## Why
 

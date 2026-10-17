@@ -40,25 +40,34 @@ ssh exe.dev new --name=my-service \
   --image=ghcr.io/tho/exeslim@sha256:<digest>
 ```
 
-The Shelley-enabled variant uses the same `ghcr.io/tho/exeslim` repository,
-with a `-shelley` suffix on version tags:
+Two Shelley-enabled variants use the same `ghcr.io/tho/exeslim` repository,
+with a suffix on version tags:
 
-| Default variant | Shelley variant |
-|---|---|
-| `:latest` | `:latest-shelley` |
-| `:<date>` | `:<date>-shelley` |
-| `:<sha>` | `:<sha>-shelley` |
-| `:<date>.<run>.<attempt>` | `:<date>.<run>.<attempt>-shelley` |
+| Default variant | Shelley variant | Shelley full variant |
+|---|---|---|
+| `:latest` | `:latest-shelley` | `:latest-shelley-full` |
+| `:<date>` | `:<date>-shelley` | `:<date>-shelley-full` |
+| `:<sha>` | `:<sha>-shelley` | `:<sha>-shelley-full` |
+| `:<date>.<run>.<attempt>` | `:<date>.<run>.<attempt>-shelley` | `:<date>.<run>.<attempt>-shelley-full` |
 
-Both variants use the same build id. Only the build-id tags are immutable;
+All variants use the same build id. Only the build-id tags are immutable;
 exe.dev caches all Shelley tags, including `:latest-shelley`, for 24 hours.
-The Shelley variant adds the
+Both Shelley variants add the
 [documented installation label](https://exe.dev/docs/customization.md#custom-image-properties).
 exe.dev installs the Shelley binary when creating the VM; the label alone does
-not start it, so the variant also ships exeuntu's socket-activated
-`shelley.socket` and `shelley.service` units. The application port remains 8000, but 9999 is Shelley's, so
-do not bind a service to it. The variant does not add compilers, Git, or other
-workstation tools.
+not start it, so both also ship exeuntu's socket-activated `shelley.socket`
+and `shelley.service` units, plus jq and sqlite3 (built-in skills) and lsof.
+The application port remains 8000, but 9999 is Shelley's, so do not bind a
+service to it.
+
+`-shelley` stops there, so Shelley's browser, voice and video transcription,
+HEIC uploads and Git views fail for lack of their tools. `-shelley-full` adds
+those tools, which is why it is about 1.4 GB rather than 270 MB: headless
+Chrome at `/headless-shell` (browser tool, screenshots, screencasts), ffmpeg
+and ffprobe (voice and video recordings, screencasts), ImageMagick with libheif
+(HEIC/AVIF uploads) and Git (diffs, commit tours, worktrees).
+`Dockerfile.shelley-full` maps each package to the feature that needs it. Neither variant adds compilers or other workstation
+tools.
 
 ```sh
 ssh exe.dev new --name=my-service --image=ghcr.io/tho/exeslim:<build-id>-shelley

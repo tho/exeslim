@@ -1,17 +1,25 @@
-# exe.dev installs the Shelley binary at /usr/local/bin/shelley when creating a
-# VM from this image, but does not start it: the image must ship the units.
-# These mirror exeuntu's (socket activation on 127.0.0.1:9999), minus the
-# /headless-shell PATH entry.
+# Shelley with its small tools: exe.dev installs the Shelley binary at
+# /usr/local/bin/shelley when creating a VM from this image, but does not start
+# it, so the image ships the units. These are exeuntu's (socket activation on
+# 127.0.0.1:9999). jq and sqlite3 are for built-in skills (mcp,
+# transcribing-audio, previous-conversations); lsof names the process holding a
+# port Shelley wants. Browser, voice, video and git features need
+# Dockerfile.shelley-full, which builds on this.
 ARG BASE=ghcr.io/tho/exeslim:latest
 FROM ${BASE}
 ARG BASE
 
 COPY --chmod=0644 image/shelley.socket image/shelley.service /etc/systemd/system/
-RUN systemctl enable shelley.socket
+RUN systemctl enable shelley.socket \
+	&& apt-get update \
+	&& DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+		jq sqlite3 lsof \
+	&& apt-get clean \
+	&& rm -rf /var/lib/apt/lists/*
 
 EXPOSE 9999
 
 LABEL "exe.dev/install-shelley"="true" \
 	org.opencontainers.image.title="exeslim-shelley" \
 	org.opencontainers.image.base.name="${BASE}" \
-	org.opencontainers.image.description="Minimal exe.dev deployment image with Shelley installation enabled."
+	org.opencontainers.image.description="Minimal exe.dev deployment image with Shelley installation enabled, without the tools Shelley's browser, voice, video and git features need."

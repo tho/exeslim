@@ -15,6 +15,11 @@ Docker, nginx, Chrome. `apt` works, so `sudo apt-get install <pkg>` is fine for
 anything you genuinely need, but prefer building artifacts elsewhere and
 shipping them here, which is how this box is meant to be used.
 
+**Exception, the Shelley image variants:** `-shelley` adds jq, sqlite3 and
+lsof, and `-shelley-full` also adds Git, ffmpeg, ImageMagick and headless
+Chrome (`/headless-shell`), for Shelley's own features. Still no compiler,
+Python, Node.js, Go or Docker.
+
 **Services are systemd units.** Start/stop with `systemctl`, and read logs with
 `journalctl -u <name>`; journald storage is persistent, and with no toolchain
 on the box it is the main debugging surface. `ss -tlnp` shows what is

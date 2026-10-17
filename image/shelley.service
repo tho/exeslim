@@ -14,7 +14,7 @@ Restart=on-failure
 RestartSec=5
 Environment=HOME=/home/exedev
 Environment=USER=exedev
-Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=PATH=/headless-shell:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 KillMode=process
 TimeoutStopSec=10
 OOMScoreAdjust=-1

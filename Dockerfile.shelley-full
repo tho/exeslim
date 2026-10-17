@@ -1,0 +1,44 @@
+# Shelley with every feature working: Dockerfile.shelley plus the external
+# programs Shelley runs. Each package below is there for a Shelley feature,
+# found by reading its source (github.com/boldsoftware/shelley):
+#
+#   headless-shell, libnss3,   browser tool, screenshots. Shelley looks for it at
+#   fontconfig, fonts          /headless-shell/headless-shell, and its upgrade
+#                              button replaces that directory. Fonts so pages
+#                              and emoji render in screenshots.
+#   ffmpeg (ffprobe)           voice and video: /transcription probes uploaded
+#                              recordings, extracts AAC audio and makes a video
+#                              contact sheet; browser screencasts to H.264.
+#   imagemagick, libheif       HEIC/AVIF image uploads (`convert heic:- png:-`).
+#   git                        diff view, commit tours, worktrees, git state.
+#
+# jq, sqlite3 and lsof come from Dockerfile.shelley.
+#
+# Not here: Node (Shelley's MCP client speaks HTTP only, never `npx`), language
+# toolchains, and anything only exeuntu's other agents use. Ubuntu's ffmpeg
+# drags in Mesa and LLVM (~200 MB, via libavdevice); that is the cost of the
+# packaged, security-updated build, the one exeuntu also uses.
+ARG BASE=ghcr.io/tho/exeslim:latest-shelley
+FROM docker.io/chromedp/headless-shell:stable@sha256:53cc0f33c0598ff244f6e45458f6dfaf0ae4206d388ae7364903afd1d9d14f0a AS chrome
+
+FROM ${BASE}
+ARG BASE
+
+RUN apt-get update \
+	&& DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+		libnss3 fontconfig fonts-dejavu-core fonts-noto-color-emoji \
+		ffmpeg \
+		imagemagick libheif1 libheif-plugin-libde265 \
+		git \
+	&& apt-get clean \
+	&& rm -rf /var/lib/apt/lists/* \
+	&& git config --system init.defaultBranch main
+
+COPY --from=chrome /headless-shell /headless-shell
+# shelley.service sets its own PATH with /headless-shell first; this is for
+# SSH sessions.
+ENV PATH="/headless-shell:${PATH}"
+
+LABEL org.opencontainers.image.title="exeslim-shelley-full" \
+	org.opencontainers.image.base.name="${BASE}" \
+	org.opencontainers.image.description="Minimal exe.dev deployment image with Shelley and the tools all its features need: browser, voice, video and git."

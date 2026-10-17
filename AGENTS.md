@@ -20,13 +20,18 @@ Some facts live in several places. When you change one, update the others:
   `docs/internals.md`.
 - The published tags: `.github/workflows/build.yml`, "Picking a tag" in
   `docs/operating.md`, and the Shelley paragraph in `README.md`.
+- The Shelley variants' packages: `Dockerfile.shelley`, `Dockerfile.shelley-full`
+  and its header, the check in "Check the Shelley variants", the list in
+  "Picking a tag" in `docs/operating.md`, the Shelley paragraph in `README.md`,
+  and the note in `image/agent-context.md`.
 
 To check a change locally, `docker build -t ghcr.io/tho/exeslim:dev .`, then
 follow the "Check the image" step in `.github/workflows/build.yml`, replacing
-`${{ steps.tag.outputs.build }}` with `dev`. For the Shelley variant, also
-`docker build -f Dockerfile.shelley --build-arg BASE=ghcr.io/tho/exeslim:dev -t ghcr.io/tho/exeslim:dev-shelley .`
-and follow "Check the Shelley variant" the same way. Without `BASE`, it builds
-on the published `:latest`.
+`${{ steps.tag.outputs.build }}` with `dev`. For the Shelley variants, also
+`docker build -f Dockerfile.shelley --build-arg BASE=ghcr.io/tho/exeslim:dev -t ghcr.io/tho/exeslim:dev-shelley .`,
+then `docker build -f Dockerfile.shelley-full --build-arg BASE=ghcr.io/tho/exeslim:dev-shelley -t ghcr.io/tho/exeslim:dev-shelley-full .`,
+and follow "Check the Shelley variants" the same way. Without `BASE`, they
+build on the published `:latest` and `:latest-shelley`.
 
 In prose, never use em dashes, en dashes or spaced hyphens as sentence
 interrupters.

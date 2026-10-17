@@ -55,12 +55,16 @@ path that Shelley (exe.dev's coding agent) reads, with `~/.claude/CLAUDE.md`,
 `~/.codex/AGENTS.md` and `~/.pi/AGENTS.md` symlinked to it: the same layout as
 exeuntu. It carries exeuntu's platform guidance plus a note that this box has no
 toolchain, so an agent doesn't waste a turn discovering there's no compiler.
-For Shelley, use the `exeslim:<build-id>-shelley` variant (see
-[operating](operating.md#picking-a-tag)). It adds the documented
+For Shelley, use the `-shelley` or `-shelley-full` variant (see
+[operating](operating.md#picking-a-tag)). Both add the documented
 `exe.dev/install-shelley=true` label. exe.dev installs the binary at VM creation
-but does not start it, so the variant ships exeuntu's `shelley.socket` and
-`shelley.service` with the socket enabled (`image/shelley.*`, minus the
-`/headless-shell` PATH entry).
+but does not start it, so `Dockerfile.shelley` ships exeuntu's
+`shelley.socket` and `shelley.service` unchanged (`image/shelley.*`) with the
+socket enabled, plus jq, sqlite3 and lsof, which are small. `Dockerfile.shelley-full` builds on it and adds the programs
+Shelley's features run, found by reading Shelley's source: headless Chrome from
+the `chromedp/headless-shell` image, as exeuntu does, and the rest from Ubuntu.
+Ubuntu's ffmpeg pulls in Mesa and LLVM (~200 MB) through `libavdevice`; that is
+accepted over a third-party static build.
 
 **The service hardening profile** is exeslim's own, with no exeuntu counterpart:
 a prefix drop-in, `/etc/systemd/system/svc-.service.d/50-hardening.conf`, that
@@ -110,10 +114,10 @@ below is platform wiring that exe.dev depends on, and is reproduced here:
 | linger + `XDG_RUNTIME_DIR` | Populates `/run/user/1000` so `systemd --user` works. |
 | Empty `/etc/machine-id` at the end of the build | Package configuration bakes an ID into the image, so every VM would share one identity. Emptied, not removed: an absent file makes systemd treat boot as first boot and re-enable the units disabled above. |
 
-Deliberately **not** carried over: Chrome/headless-shell, the Claude/Codex/pi
-agent *binaries*, the pi extension and catalog, nginx + its index page,
-xterm-ghostty terminfo, `EXPOSE 9999` (Shelley, which only the `-shelley`
-variant adds), `EXEUNTU=1`, and the whole
+Deliberately **not** carried over: Chrome/headless-shell (only the `-shelley-full`
+variant adds it), the Claude/Codex/pi agent *binaries*, the pi extension and
+catalog, nginx + its index page, xterm-ghostty terminfo, `EXPOSE 9999` (Shelley,
+which only the Shelley variants add), `EXEUNTU=1`, and the whole
 `unminimize` + man-pages + `locales-all` restoration. The agents' *context*
 files are kept; see [What's in it](#whats-in-it).
 
