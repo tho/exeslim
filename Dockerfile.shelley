@@ -1,0 +1,11 @@
+# exe.dev installs the Shelley binary when creating a VM from this image.
+ARG BASE=ghcr.io/tho/exeslim:latest
+FROM ${BASE}
+ARG BASE
+
+EXPOSE 9999
+
+LABEL "exe.dev/install-shelley"="true" \
+	org.opencontainers.image.title="exeslim-shelley" \
+	org.opencontainers.image.base.name="${BASE}" \
+	org.opencontainers.image.description="Minimal exe.dev deployment image with Shelley installation enabled."

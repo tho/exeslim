@@ -2,7 +2,8 @@
 # its unit, root-owned, into an image derived from exeslim.
 #
 #   docker build -t hello .
-#   docker build --build-arg BASE=exeslim:dev -t hello .   # a local base
+#   docker build --build-arg BASE=ghcr.io/tho/exeslim:<build-id> -t hello .
+#   docker build --build-arg BASE=ghcr.io/tho/exeslim:dev -t hello .   # a local base
 
 ARG BASE=ghcr.io/tho/exeslim:latest
 

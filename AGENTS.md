@@ -18,11 +18,15 @@ Some facts live in several places. When you change one, update the others:
   `docs/deploying.md`, and the summary in `image/agent-context.md`.
 - The probe's checks: `probe/main.go` and the list and "16 checks" counts in
   `docs/internals.md`.
-- The published tags: `.github/workflows/build.yml` and "Picking a tag" in
-  `docs/operating.md`.
+- The published tags: `.github/workflows/build.yml`, "Picking a tag" in
+  `docs/operating.md`, and the Shelley paragraph in `README.md`.
 
-To check a change locally, `docker build -t exeslim:ci .`, then follow the
-"Check the image" step in `.github/workflows/build.yml`.
+To check a change locally, `docker build -t ghcr.io/tho/exeslim:dev .`, then
+follow the "Check the image" step in `.github/workflows/build.yml`, replacing
+`${{ steps.tag.outputs.build }}` with `dev`. For the Shelley variant, also
+`docker build -f Dockerfile.shelley --build-arg BASE=ghcr.io/tho/exeslim:dev -t ghcr.io/tho/exeslim:dev-shelley .`
+and follow "Check the Shelley variant" the same way. Without `BASE`, it builds
+on the published `:latest`.
 
 In prose, never use em dashes, en dashes or spaced hyphens as sentence
 interrupters.

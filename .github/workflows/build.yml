@@ -39,6 +39,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          # Share Docker's image store and cache across builds and publishes.
+          # Derived images can then resolve the base before it is published.
+          driver: docker
+          name: default
 
       # Only main publishes. Skipped on PRs, where a fork only ever gets a
       # read-only GITHUB_TOKEN, and on manual runs from other branches, which
@@ -72,14 +77,18 @@ jobs:
       # Build once into the local Docker image store so the checks below can
       # run against exactly what gets published. Same build-args as the push
       # step, so that step is a buildx cache hit rather than a second build.
-      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+      - name: Build the image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           platforms: linux/amd64
           load: true
           build-args: |
             BUILD_ID=${{ steps.tag.outputs.build }}
-          tags: exeslim:ci
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ steps.tag.outputs.created }}
+          tags: ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }}
           provenance: false
           sbom: false
 
@@ -89,9 +98,8 @@ jobs:
       # image (its systemd is the one that matters), on the probe unit and the
       # hello example unit with the drop-in applied; threshold 20 means
       # exposure 2.0, and a unit the drop-in misses scores ~9.4. Booted: hello
-      # built on this image (`--builder default`, because setup-buildx made its
-      # container builder the default and that cannot see images loaded into
-      # Docker), run under systemd, then svc-check on its effective
+      # built on this image using the shared Docker builder, run under
+      # systemd, then svc-check on its effective
       # properties, and svc-check shown to fail a deliberately bad drop-in.
       # After boot only the unit Docker cannot run may have failed, init's
       # sysctls and ufw must be in place, and hello must answer. See
@@ -105,33 +113,33 @@ jobs:
           goimg=$(sed -n 's/^FROM \(golang:[^ ]*\).*/\1/p' examples/hello/Dockerfile)
           docker run --rm -v "$PWD/probe:/src:ro" -w /src "$goimg" go vet ./...
 
-          docker build --builder default --build-arg BASE=exeslim:ci \
-            -t exeslim-hello:ci examples/hello
+          docker build --builder default --build-arg BASE=ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }} \
+            -t ghcr.io/tho/exeslim-hello:${{ steps.tag.outputs.build }} examples/hello
 
           # What exe.dev reads from the image: the proxy port, the login user,
           # and the version label that must override Ubuntu's "24.04".
-          meta=$(docker inspect exeslim:ci --format \
+          meta=$(docker inspect ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }} --format \
             '{{json .Config.ExposedPorts}} {{index .Config.Labels "exe.dev/login-user"}} {{index .Config.Labels "org.opencontainers.image.version"}}')
           [[ $meta == '{"8000/tcp":{}} exedev ${{ steps.tag.outputs.build }}' ]] ||
             { echo "image metadata is wrong: $meta"; exit 1; }
           # machine-id must be emptied after the last apt layer (#18), and the
           # /tmp override only shadows Ubuntu's wipe-at-boot if the file name
           # matches: with the stock D line, --remove empties /tmp.
-          docker run --rm exeslim:ci bash -euc '
+          docker run --rm ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }} bash -euc '
             [[ ! -s /etc/machine-id && $(readlink /var/lib/dbus/machine-id) == /etc/machine-id ]]
             touch /tmp/keep && systemd-tmpfiles --remove && test -e /tmp/keep'
 
           # verify also checks ExecStart exists; any executable will do.
-          docker run --rm -v "$PWD/probe:/probe:ro" exeslim:ci bash -euc '
+          docker run --rm -v "$PWD/probe:/probe:ro" ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }} bash -euc '
             cp /probe/svc-probe.service /etc/systemd/system/
             ln -s /usr/bin/true /usr/local/bin/svc-probe
             systemd-analyze verify svc-probe.service
             systemd-analyze security --offline=true --threshold=20 svc-probe.service'
-          docker run --rm exeslim-hello:ci bash -euc '
+          docker run --rm ghcr.io/tho/exeslim-hello:${{ steps.tag.outputs.build }} bash -euc '
             systemd-analyze verify svc-hello.service
             systemd-analyze security --offline=true --threshold=20 svc-hello.service'
 
-          docker run -d --name hello --privileged --tmpfs /run --tmpfs /run/lock exeslim-hello:ci
+          docker run -d --name hello --privileged --tmpfs /run --tmpfs /run/lock ghcr.io/tho/exeslim-hello:${{ steps.tag.outputs.build }}
           # "degraded" is expected: systemd-growfs-root fails in Docker.
           timeout 120 bash -c 'until [[ $(docker exec hello systemctl is-system-running 2>/dev/null) =~ ^(running|degraded)$ ]]; do sleep 1; done'
           docker exec hello svc-check svc-hello.service
@@ -172,6 +180,31 @@ jobs:
               "SystemCallFilter: allows" "MemoryMax:"; do
             grep -qF -- "$want" <<<"$out" || { echo "svc-check missed $want:"; echo "$out"; exit 1; }
           done
+
+      # Build and load the variant before checking it, using the same base
+      # and cache as its publish step. Dockerfile.shelley overrides the OCI
+      # labels that describe the image; the rest are inherited from the base.
+      - name: Build the Shelley variant
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: Dockerfile.shelley
+          platforms: linux/amd64
+          load: true
+          build-args: |
+            BASE=ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }}
+          tags: ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }}-shelley
+          provenance: false
+          sbom: false
+
+      - name: Check the Shelley variant
+        run: |
+          meta=$(docker inspect ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }}-shelley --format \
+            '{{json .Config.ExposedPorts}} {{index .Config.Labels "exe.dev/login-user"}} {{index .Config.Labels "exe.dev/install-shelley"}} {{index .Config.Labels "org.opencontainers.image.version"}}')
+          [[ $meta == '{"8000/tcp":{},"9999/tcp":{}} exedev true ${{ steps.tag.outputs.build }}' ]] ||
+            { echo "Shelley variant metadata is wrong: $meta"; exit 1; }
+          base=$(docker inspect ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }} --format '{{index .Config.Labels "exe.dev/install-shelley"}}')
+          [[ $base != true ]] || { echo "base image has exe.dev/install-shelley=true"; exit 1; }
 
       # The booted check's failures are otherwise mute: a boot-wait timeout
       # exits 124 with nothing to read, and the weekly rebuild runs unattended.
@@ -229,5 +262,24 @@ jobs:
           tags: |
             ghcr.io/tho/exeslim-hello:latest
             ghcr.io/tho/exeslim-hello:${{ steps.tag.outputs.build }}
+          provenance: false
+          sbom: false
+
+      # Derive the Shelley variant from this run's immutable base image. Last,
+      # so a failure here leaves only the -shelley tags stale.
+      - if: github.ref == 'refs/heads/main'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: Dockerfile.shelley
+          platforms: linux/amd64
+          push: true
+          build-args: |
+            BASE=ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }}
+          tags: |
+            ghcr.io/tho/exeslim:latest-shelley
+            ghcr.io/tho/exeslim:${{ steps.tag.outputs.date }}-shelley
+            ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }}-shelley
+            ghcr.io/tho/exeslim:${{ github.sha }}-shelley
           provenance: false
           sbom: false

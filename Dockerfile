@@ -199,7 +199,7 @@ RUN : >/etc/machine-id \
 
 # Sets the default proxy port. Without an EXPOSE, exe.dev defaults to :80
 # (verified on a stock ubuntu:24.04 VM); exeuntu exposes 8000 and 9999, the
-# latter being Shelley's. We have no Shelley, so 8000 alone.
+# latter being Shelley's. Only Dockerfile.shelley adds Shelley, and 9999.
 EXPOSE 8000
 
 # Default locale for systemd services and non-SSH contexts. Three ways to
@@ -216,8 +216,7 @@ EXPOSE 8000
 ENV LANG=en_US.UTF-8
 
 LABEL "exe.dev/login-user"="exedev"
-# Add this if you want Shelley (and `new --prompt`) on VMs from this image:
-# LABEL "exe.dev/install-shelley"="true"
+# Dockerfile.shelley adds Shelley support as a separately published variant.
 
 # --- OCI metadata -------------------------------------------------------------
 # Declared here, at the end, on purpose: an ARG invalidates the build cache from

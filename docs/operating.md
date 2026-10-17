@@ -6,7 +6,7 @@ see [deploying.md](deploying.md); for why the image is built this way, see
 
 ## Picking a tag
 
-Each build publishes four tags. Only one of them is immutable:
+Each build publishes four tags for the default variant. Only one is immutable:
 
 | Tag | Moves? | Cached |
 |---|---|---|
@@ -38,6 +38,30 @@ Or the digest, immutable by construction:
 ```sh
 ssh exe.dev new --name=my-service \
   --image=ghcr.io/tho/exeslim@sha256:<digest>
+```
+
+The Shelley-enabled variant uses the same `ghcr.io/tho/exeslim` repository,
+with a `-shelley` suffix on version tags:
+
+| Default variant | Shelley variant |
+|---|---|
+| `:latest` | `:latest-shelley` |
+| `:<date>` | `:<date>-shelley` |
+| `:<sha>` | `:<sha>-shelley` |
+| `:<date>.<run>.<attempt>` | `:<date>.<run>.<attempt>-shelley` |
+
+Both variants use the same build id. Only the build-id tags are immutable;
+exe.dev caches all Shelley tags, including `:latest-shelley`, for 24 hours.
+The Shelley variant adds the
+[documented installation label](https://exe.dev/docs/customization.md#custom-image-properties).
+exe.dev installs Shelley when creating the VM. The image adds no service or
+socket units; startup through the platform installer still needs verification
+on an exe.dev VM. The application port remains 8000, but 9999 is Shelley's, so
+do not bind a service to it. The variant does not add compilers, Git, or other
+workstation tools.
+
+```sh
+ssh exe.dev new --name=my-service --image=ghcr.io/tho/exeslim:<build-id>-shelley
 ```
 
 exe.dev's SSH command parser splits arguments on spaces, so anything

@@ -55,8 +55,11 @@ path that Shelley (exe.dev's coding agent) reads, with `~/.claude/CLAUDE.md`,
 `~/.codex/AGENTS.md` and `~/.pi/AGENTS.md` symlinked to it: the same layout as
 exeuntu. It carries exeuntu's platform guidance plus a note that this box has no
 toolchain, so an agent doesn't waste a turn discovering there's no compiler.
-Want Shelley (and `new --prompt`) on these VMs? Uncomment
-`LABEL exe.dev/install-shelley=true` in the Dockerfile.
+For Shelley, use the `exeslim:<build-id>-shelley` variant (see
+[operating](operating.md#picking-a-tag)). It adds the documented
+`exe.dev/install-shelley=true` label. exe.dev installs the binary at VM creation;
+the image itself bundles neither the binary nor service/socket units. Startup
+with only the label still needs verification on an exe.dev VM.
 
 **The service hardening profile** is exeslim's own, with no exeuntu counterpart:
 a prefix drop-in, `/etc/systemd/system/svc-.service.d/50-hardening.conf`, that
@@ -108,7 +111,8 @@ below is platform wiring that exe.dev depends on, and is reproduced here:
 
 Deliberately **not** carried over: Chrome/headless-shell, the Claude/Codex/pi
 agent *binaries*, the pi extension and catalog, nginx + its index page,
-xterm-ghostty terminfo, `EXPOSE 9999` (Shelley), `EXEUNTU=1`, and the whole
+xterm-ghostty terminfo, `EXPOSE 9999` (Shelley, which only the `-shelley`
+variant adds), `EXEUNTU=1`, and the whole
 `unminimize` + man-pages + `locales-all` restoration. The agents' *context*
 files are kept; see [What's in it](#whats-in-it).
 

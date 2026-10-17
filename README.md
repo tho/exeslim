@@ -13,6 +13,10 @@ build id looks like `2026-07-26.20.1`. `:latest` is fine for trying it out,
 but exe.dev caches it for up to an hour
 ([picking a tag](docs/operating.md#picking-a-tag)).
 
+For Shelley support, use `ghcr.io/tho/exeslim:<build-id>-shelley` instead.
+The variant sets exe.dev's Shelley installation label and retains the minimal
+package set described below.
+
 ## Why
 
 exe.dev's stock `exeuntu` image is deliberately a batteries-included agent
