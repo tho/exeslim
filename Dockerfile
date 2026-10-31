@@ -175,6 +175,11 @@ RUN chmod 644 /etc/systemd/system/exe-setup.service && \
 # It would be better if you could indicate that via an env variable or something.
 COPY init-wrapper.sh /usr/local/bin/init
 
+# Hardening profile for services. A prefix drop-in: it applies to every unit
+# named svc-<app>.service that a derived image installs, and the base ships no
+# such unit, so nothing here changes until one exists. See docs/deploying.md.
+COPY --chmod=0644 image/svc-hardening.conf /etc/systemd/system/svc-.service.d/50-hardening.conf
+
 COPY AGENTS.md /home/exedev/.config/shelley/AGENTS.md
 RUN chown exedev:exedev /home/exedev/.config/shelley/AGENTS.md
 
