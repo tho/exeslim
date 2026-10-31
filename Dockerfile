@@ -7,11 +7,8 @@ FROM ubuntu:24.04
 SHELL ["/bin/bash", "-euxo", "pipefail", "-c"]
 
 
-# Remove minimization restrictions and install packages with documentation
-# We aim for a usable non-minimal system.
-RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://mirror://mirrors.ubuntu.com/mirrors.txt|' /etc/apt/sources.list && \
-        rm -f /etc/dpkg/dpkg.cfg.d/excludes /etc/dpkg/dpkg.cfg.d/01_nodoc && \
-	apt-get update && \
+# Install a minimal package set, without recommends.
+RUN apt-get update && \
 	# Pull in all available security/bugfix updates for packages already
 	# in the base ubuntu:24.04 image. Without this we ship whatever was
 	# current when Canonical last rebuilt the base layer, which can be
@@ -23,37 +20,21 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://mirror://mirrors.ubuntu.c
 		dist-upgrade && \
 	# Pre-configure debconf to avoid interactive prompts
 	echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections && \
-	# Pre-configure pbuilder to avoid mirror prompt
-	echo 'pbuilder pbuilder/mirrorsite string http://archive.ubuntu.com/ubuntu' | debconf-set-selections && \
-	# Run unminimize with single 'y' response to restore documentation
-	echo 'y' | DEBIAN_FRONTEND=noninteractive unminimize && \
-	# Install man-db and reinstall all base packages to get their man pages back
-	DEBIAN_FRONTEND=noninteractive apt-get install -y man-db && \
-	DEBIAN_FRONTEND=noninteractive apt-get install -y --reinstall $(dpkg-query -f '${binary:Package} ' -W) && \
-	mandb -c && \
-	DEBIAN_FRONTEND=noninteractive apt-get install -y \
+	DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
 		ca-certificates \
-		locales locales-all \
-		jq sqlite3 curl vim neovim lsof iproute2 less \
-		tree net-tools file \
-		psmisc bsdmainutils sudo socat \
-		openssh-server openssh-client \
-		libcap2-bin unzip util-linux rsync \
-		iputils-ping socat netcat-openbsd \
-		ubuntu-server ubuntu-dev-tools ubuntu-standard \
-		man-db manpages manpages-dev \
+		locales \
+		curl iproute2 \
+		sudo tzdata \
 		systemd systemd-sysv \
-		atop btop iotop ncdu \
-		dbus-user-session \
-		&& apt-get remove -y pollinate ubuntu-fan && \
-		# openssh-server generates host keys during package configuration.
-		# Do not bake those per-image private keys into exeuntu.
-		rm -f /etc/ssh/ssh_host_*_key /etc/ssh/ssh_host_*_key.pub && \
-		# Allow non-root users to use ping without sudo by granting CAP_NET_RAW
-		setcap cap_net_raw=+ep /usr/bin/ping && \
+		dbus-user-session && \
+	# en_US and en_GB only; locales-all is ~200 MB.
+	locale-gen en_US.UTF-8 en_GB.UTF-8 && \
+	update-locale LANG=en_US.UTF-8 && \
 	# Remove policy-rc.d so services can start normally (the base image includes this
 	# to prevent services from starting during build, but we run systemd at runtime)
-	rm -f /usr/sbin/policy-rc.d
+	rm -f /usr/sbin/policy-rc.d && \
+	apt-get clean && \
+	rm -rf /var/lib/apt/lists/*
 
 
 # exe-init manages DNS directly, so systemd-resolved has nothing to do.
@@ -61,12 +42,7 @@ RUN apt-get purge -y systemd-resolved
 
 
 # Configure systemd
-RUN rm /etc/systemd/system/multi-user.target.wants/console-setup.service \
-		/etc/systemd/system/multi-user.target.wants/ModemManager.service \
-		/etc/systemd/system/multi-user.target.wants/snapd.* \
-		/etc/systemd/system/multi-user.target.wants/unattended-upgrades.* \
-		/etc/systemd/system/multi-user.target.wants/ubuntu-advantage.service && \
-	systemctl mask -- getty.target \
+RUN systemctl mask -- getty.target \
 		fwupd.service \
 		fwupd-refresh.service \
 		fwupd-refresh.timer \
@@ -123,15 +99,7 @@ RUN rm /etc/systemd/system/multi-user.target.wants/console-setup.service \
 	# systemd-logind is disabled but not masked. It's involved in populating the XDG runtime dir sockets... somehow
 	systemctl disable getty.target systemd-logind.service \
                    console-getty.service \
-		   atop.service \
                    getty@.service \
-                   snapd.socket \
-		   motd-news.timer motd-news.service \
-		    apport.service apport-autoreport.timer apport-autoreport.path apport-forward.socket \
-		    snapd.snap-repair.timer snapd.snap-repair.service \
-		    udisks2.service \
-		   ufw.service \
-		   lvm2-lvmpolld.socket \
                    systemd-ask-password-wall.service \
                    systemd-ask-password-console.service \
                    systemd-machine-id-commit.service \
@@ -141,12 +109,9 @@ RUN rm /etc/systemd/system/multi-user.target.wants/console-setup.service \
                    systemd-udevd.service \
                    systemd-udev-trigger.service \
                    systemd-udev-settle.service \
-		   e2scrub_reap.service \
 		   systemd-update-utmp.service \
-		   atopacct.service \
-		   sysstat.service \
                    systemd-hwdb-update.service \
-		   multipathd.service && \
+		   e2scrub_reap.service && \
 	mkdir -p /etc/systemd/system.conf.d && \
     		echo '[Manager]' > /etc/systemd/system.conf.d/container-overrides.conf && \
     		echo 'LogLevel=info' >> /etc/systemd/system.conf.d/container-overrides.conf && \
@@ -179,7 +144,6 @@ RUN echo '/dev/vda / ext4 defaults,x-systemd.growfs 0 1' > /etc/fstab
 # that also run at boot.
 COPY tmpfiles-tmp.conf /etc/tmpfiles.d/tmp.conf
 
-ENV EXEUNTU=1
 
 # https://github.com/trfore/docker-ubuntu2404-systemd/blob/main/Dockerfile suggests the following
 # might be useful?
@@ -206,9 +170,6 @@ USER root
 # Disable Ubuntu's default MOTD (the sudo hint, etc.)
 RUN rm -rf /etc/update-motd.d/* /etc/motd && touch /home/exedev/.hushlogin && chown exedev:exedev /home/exedev/.hushlogin
 
-# Add custom MOTD to exedev's .bashrc (ignores .hushlogin - we handle that ourselves)
-COPY motd-snippet.bash /tmp/motd-snippet.bash
-RUN cat /tmp/motd-snippet.bash >> /home/exedev/.bashrc && rm /tmp/motd-snippet.bash
 
 # Create systemd socket and service for Shelley (socket activation).
 # The shelley binary itself is installed at vm creation.
@@ -231,10 +192,6 @@ COPY init-wrapper.sh /usr/local/bin/init
 COPY AGENTS.md /home/exedev/.config/shelley/AGENTS.md
 RUN chown exedev:exedev /home/exedev/.config/shelley/AGENTS.md
 
-
-# Install xterm-ghostty terminfo for Ghostty terminal support
-COPY xterm-ghostty.terminfo /tmp/xterm-ghostty.terminfo
-RUN tic -x - < /tmp/xterm-ghostty.terminfo && rm /tmp/xterm-ghostty.terminfo
 
 # Empty the machine ID baked in by package configuration, so each VM built from
 # this image generates its own on first boot. A shared one defeats anything that
