@@ -63,6 +63,9 @@ ENV PATH="/headless-shell:${PATH}"
 # NSS database, which older builds honor too. As exedev: the database is
 # ~/.pki/nssdb, which headless-shell reads and Shelley runs as exedev.
 USER exedev
+# hadolint cannot see that this stage inherits the base's SHELL, which sets
+# pipefail.
+# hadolint ignore=DL4006
 RUN --mount=type=bind,source=distrust-emudhra.sh,target=/tmp/distrust-emudhra.sh \
 	bash /tmp/distrust-emudhra.sh && \
 	certutil -L -d sql:/home/exedev/.pki/nssdb | grep -q '^distrusted emSign ECC Root CA - G3  *p,p,p$'

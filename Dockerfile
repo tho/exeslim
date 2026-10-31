@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM ubuntu:24.04
+FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
 
 # Switch from dash to bash by default.
 SHELL ["/bin/bash", "-euxo", "pipefail", "-c"]
@@ -196,4 +196,21 @@ RUN : > /etc/machine-id && \
 EXPOSE 8000
 
 LABEL "exe.dev/login-user"="exedev"
+
+# Default locale for systemd services and non-SSH contexts. Override per VM with
+# `new --env LANG=...`, on the box with `update-locale`; an SSH session inherits
+# the client's LANG. Only en_US.UTF-8 and en_GB.UTF-8 are generated.
+ENV LANG=en_US.UTF-8
+
+# OCI metadata, last: an ARG invalidates the build cache from where it is used,
+# so a new BUILD_ID does not rebuild the layers above. ubuntu:24.04 ships
+# org.opencontainers.image.version="24.04", which would otherwise be inherited.
+ARG BUILD_ID=dev
+LABEL org.opencontainers.image.title="exeslim" \
+	org.opencontainers.image.description="Minimal exe.dev base image: systemd and the full platform wiring, without exeuntu's agent workstation toolchain." \
+	org.opencontainers.image.source="https://github.com/tho/exeslim" \
+	org.opencontainers.image.url="https://github.com/tho/exeslim" \
+	org.opencontainers.image.licenses="Apache-2.0" \
+	org.opencontainers.image.base.name="docker.io/library/ubuntu:24.04" \
+	org.opencontainers.image.version="${BUILD_ID}"
 CMD ["/usr/local/bin/init"]

@@ -1,0 +1,19 @@
+# hadolint's configuration, for every Dockerfile in the repository. Rules
+# listed here are wrong for this repository as a whole, with the reason. A rule
+# that is wrong for one instruction gets a "# hadolint ignore=" comment above
+# that instruction instead.
+ignored:
+  # DL3008, pin apt package versions: the weekly rebuild in
+  # .github/workflows/build.yml exists to pick up Ubuntu's security updates,
+  # which pinned versions would hold back. exeuntu does not pin either.
+  - DL3008
+  # DL3002, last USER should not be root: CMD is init, which runs systemd as
+  # PID 1 and so must start as root. exedev is the login user on the booted VM.
+  - DL3002
+  # DL3066, non-numeric user id: the image boots as a VM, so there is no host
+  # that needs to resolve the UID. exeuntu names the user.
+  - DL3066
+  # SC2016, expressions do not expand in single quotes: exeuntu writes shell
+  # snippets into .bashrc and .profile in single quotes so that $HOME and
+  # $(id -u) expand at login rather than at build time.
+  - SC2016
