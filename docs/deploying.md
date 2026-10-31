@@ -74,8 +74,11 @@ WantedBy=multi-user.target
   expected state of a fresh VM. Never put secrets in the image or in
   `Environment=`: both are readable by anyone who can pull the image or run
   `systemctl show`.
-- **No Unix sockets.** Local databases over `127.0.0.1`, logging to stdout
-  (journald), not `/dev/log`.
+- **Unix sockets work.** `sd_notify()` reaches systemd, so `Type=notify` and
+  `WatchdogSec=` do what they say. A local database is reachable over its
+  socket, with peer authentication mapping the service's user, `svc-<app>`
+  (resolvable through nss-systemd), to a role. `/dev/log` works too, though
+  stdout (journald) is simpler. The system bus is inaccessible.
 
 What the profile sets, and why, is in
 [`image/svc-hardening.conf`](../image/svc-hardening.conf), one comment per
@@ -83,7 +86,7 @@ setting. `systemd-analyze security` rates a unit under it at exposure 1.2 and
 the same unit without it at 9.4.
 
 To loosen a setting on purpose, add a drop-in that sorts after
-`50-hardening.conf`, such as `svc-<app>.service.d/60-unix.conf`. Put it in the
+`50-hardening.conf`, such as `svc-<app>.service.d/60-proc.conf`. Put it in the
 image rather than using `systemctl edit` on the VM, which writes an override
 the image does not have and CI never sees.
 
@@ -91,7 +94,9 @@ the image does not have and CI never sees.
 
 Egress is open (add `IPAddressDeny=any` and `IPAddressAllow=localhost ...` in a
 drop-in if that matters; keep `localhost`, the proxy connects over it). The
-service can read `/usr` and world-readable `/etc`. It owns its own state and
+service can read `/usr` and world-readable `/etc`. It can connect to any Unix
+socket its UID may open, and to abstract-namespace sockets, which have no
+permissions to check; only the system bus is closed. It owns its own state and
 credentials. It can fill the disk; only the ext4 root reserve, which root alone
 can use, keeps journald and `sudo` working then. Setup scripts, other units and
 SSH sessions run without the profile. No Docker: its daemon is root-equivalent.

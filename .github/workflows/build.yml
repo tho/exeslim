@@ -142,6 +142,10 @@ jobs:
           failed=$(docker exec hello systemctl --failed --plain --no-legend | awk '{print $1}')
           [[ -z $failed || $failed == systemd-growfs-root.service ]] ||
             { echo "unexpected failed units: $failed"; exit 1; }
+          # nss-systemd must resolve the running unit's dynamic user by name;
+          # peer authentication on a Unix socket depends on it.
+          [[ $(docker exec hello getent passwd svc-hello | cut -d: -f1) == svc-hello ]] ||
+            { echo "nss-systemd does not resolve svc-hello"; exit 1; }
           # init lets unprivileged services bind low ports; its writable guard
           # skips a misspelt key silently. IPv6 only where the runner has it.
           for key in ipv4/ip_unprivileged_port_start ipv6/ip_unprivileged_port_start; do

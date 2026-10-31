@@ -175,6 +175,16 @@ RUN chmod 644 /etc/systemd/system/exe-setup.service && \
 # It would be better if you could indicate that via an env variable or something.
 COPY init-wrapper.sh /usr/local/bin/init
 
+# nss-systemd resolves DynamicUser= names (svc-<app>): a database's peer
+# authentication on a Unix socket maps the service's UID to a role, and ps and
+# ls show a name. The package enables itself in nsswitch.conf; check that it did.
+RUN apt-get update && \
+	DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libnss-systemd && \
+	apt-get clean && \
+	rm -rf /var/lib/apt/lists/* && \
+	grep -qE '^passwd:.* systemd' /etc/nsswitch.conf && \
+	grep -qE '^group:.* systemd' /etc/nsswitch.conf
+
 # Hardening profile for services. A prefix drop-in: it applies to every unit
 # named svc-<app>.service that a derived image installs, and the base ships no
 # such unit, so nothing here changes until one exists. See docs/deploying.md.

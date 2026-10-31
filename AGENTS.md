@@ -16,12 +16,13 @@ Shelley's own features. Still no compiler, Python, Node.js, Go or Docker.
 
 **A service's unit is hardened only if named `svc-<app>.service`**, through the
 drop-in `/etc/systemd/system/svc-.service.d/50-hardening.conf`: dynamic UID,
-read-only filesystem except `StateDirectory=`, no Unix sockets, no capabilities.
+read-only filesystem except `StateDirectory=`, no D-Bus, no capabilities.
 Rules:
 
 - Do not add `User=` or loosen these settings to make something work.
 - Write only to `$STATE_DIRECTORY`.
-- Connect to local databases over TCP at `127.0.0.1`, not a Unix socket.
+- Connect to local databases over their Unix socket with peer authentication
+  (the service's user is `svc-<app>`), or over TCP at `127.0.0.1`.
 - Listen on `127.0.0.1:8000`, the proxy's default port; the proxy connects from
   inside the VM, so nothing needs to listen on the network interface.
 - Secrets go in a root-only file read through `LoadCredential=`, never in
