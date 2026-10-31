@@ -1,32 +1,5 @@
 # syntax=docker/dockerfile:1
 
-# Stage 1: Get the headless-shell (Chromium) build Shelley's release metadata
-# advertises for this platform, so it matches what Shelley upgrades to.
-FROM docker.io/library/ubuntu:24.04 AS chrome
-ARG TARGETARCH
-SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
-RUN apt-get update && \
-	apt-get install -y --no-install-recommends ca-certificates curl jq && \
-	curl -fsSL --retry 5 --retry-all-errors -o /tmp/release.json https://boldsoftware.github.io/shelley/release.json && \
-	build=$(jq -ce --arg p "linux_$TARGETARCH" '.headless_shells[$p] // error("no headless_shells.\($p) in release.json")' /tmp/release.json) && \
-	version=$(jq -r .version <<<"$build") && \
-	url=$(jq -r .url <<<"$build") && \
-	[[ $url == https://github.com/boldsoftware/shelley/releases/download/headless-shell/v"${version#Chromium }"/* ]] && \
-	curl -fsSL --retry 5 --retry-all-errors -o /tmp/headless-shell.tar.gz "$url" && \
-	tar -xzf /tmp/headless-shell.tar.gz -C / --no-same-owner && \
-	[[ -x /headless-shell/headless-shell ]] && \
-	# Record the release, which the binary's --version can't show, for Shelley's version check.
-	sum=$(sha256sum /headless-shell/headless-shell | cut -d' ' -f1) && \
-	printf '%s\nsha256 %s\n' "$version" "$sum" > /headless-shell/headless-shell-version.txt
-
-# Build the guest-facing exeuntu helper.
-FROM docker.io/library/golang:1.27.3 AS exeuntu-cli
-ARG EXEUNTU_GIT_VERSION=unknown
-WORKDIR /src/exeuntu-cli
-COPY cli/ ./
-RUN CGO_ENABLED=0 GOOS=linux go build -mod=mod -tags osusergo,netgo \
-        -ldflags "-X main.gitVersion=${EXEUNTU_GIT_VERSION} -extldflags=-static -s -w" \
-        -o /out/exeuntu .
 
 FROM ubuntu:24.04
 
@@ -59,26 +32,18 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://mirror://mirrors.ubuntu.c
 	DEBIAN_FRONTEND=noninteractive apt-get install -y --reinstall $(dpkg-query -f '${binary:Package} ' -W) && \
 	mandb -c && \
 	DEBIAN_FRONTEND=noninteractive apt-get install -y \
-		ca-certificates wget ripgrep \
+		ca-certificates \
 		locales locales-all \
-		git jq sqlite3 curl vim neovim lsof iproute2 less nginx \
-		make python3-pip python-is-python3 tree net-tools file build-essential \
-		pipx psmisc bsdmainutils sudo socat \
+		jq sqlite3 curl vim neovim lsof iproute2 less \
+		tree net-tools file \
+		psmisc bsdmainutils sudo socat \
 		openssh-server openssh-client \
 		libcap2-bin unzip util-linux rsync \
 		iputils-ping socat netcat-openbsd \
 		ubuntu-server ubuntu-dev-tools ubuntu-standard \
 		man-db manpages manpages-dev \
-		mitmproxy \
 		systemd systemd-sysv \
 		atop btop iotop ncdu \
-		git \
-		libglib2.0-0 libnss3 libnss3-tools libx11-6 libxcomposite1 libxdamage1 \
-		libxext6 libxi6 libxrandr2 libgbm1 libgtk-3-0 \
-		fonts-noto-color-emoji fonts-symbola \
-		docker.io docker-buildx docker-compose-v2 \
-		imagemagick ffmpeg \
-		bubblewrap \
 		dbus-user-session \
 		&& apt-get remove -y pollinate ubuntu-fan && \
 		# openssh-server generates host keys during package configuration.
@@ -86,51 +51,14 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://mirror://mirrors.ubuntu.c
 		rm -f /etc/ssh/ssh_host_*_key /etc/ssh/ssh_host_*_key.pub && \
 		# Allow non-root users to use ping without sudo by granting CAP_NET_RAW
 		setcap cap_net_raw=+ep /usr/bin/ping && \
-	fc-cache -f -v && \
 	# Remove policy-rc.d so services can start normally (the base image includes this
 	# to prevent services from starting during build, but we run systemd at runtime)
 	rm -f /usr/sbin/policy-rc.d
 
-ARG GH_VERSION=2.97.0
 
-# CI overrides GH_VERSION with the newest stable release older than five days.
-RUN --mount=type=bind,source=install-gh.sh,target=/tmp/install-gh.sh \
-	bash /tmp/install-gh.sh "${GH_VERSION}" && \
-	gh --version
-
-# Install Tailscale (keyring method, per https://tailscale.com/install.sh)
-# This must run after ca-certificates and curl are installed.
-RUN curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg -o /usr/share/keyrings/tailscale-archive-keyring.gpg && \
-    curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.tailscale-keyring.list -o /etc/apt/sources.list.d/tailscale.list && \
-    apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y tailscale && \
-    # Require a release with the x/crypto and x/image security fixes.
-    dpkg --compare-versions "$(dpkg-query -W -f '${Version}' tailscale)" ge 1.104.1 && \
-    tailscale version
-
-# exe-init manages DNS directly. The unused resolvconf shim makes Tailscale
-# misdetect its own DNS configuration as openresolv (tailscale/tailscale#19062).
+# exe-init manages DNS directly, so systemd-resolved has nothing to do.
 RUN apt-get purge -y systemd-resolved
 
-# Install latest stable Go from go.dev (the golang-go apt package lags behind)
-RUN ARCH=$(dpkg --print-architecture) && \
-    GO_VERSION=$(curl -fsSL 'https://go.dev/dl/?mode=json' | jq -r '.[0].version') && \
-    curl -fsSL "https://go.dev/dl/${GO_VERSION}.linux-${ARCH}.tar.gz" | tar -xzC /usr/local && \
-    ln -s /usr/local/go/bin/go /usr/local/bin/go && \
-    ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt
-
-COPY --from=exeuntu-cli /out/exeuntu /usr/local/bin/exeuntu
-
-# Install uv to /usr/local/bin
-RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
-
-# Install the DuckDB CLI (a single static binary).
-ARG DUCKDB_VERSION=1.5.5
-RUN ARCH=$(dpkg --print-architecture) && \
-    curl -fsSL "https://install.duckdb.org/v${DUCKDB_VERSION}/duckdb_cli-linux-${ARCH}.zip" -o /tmp/duckdb.zip && \
-    unzip -o /tmp/duckdb.zip -d /usr/local/bin duckdb && \
-    rm /tmp/duckdb.zip && \
-    chmod 0755 /usr/local/bin/duckdb && \
-    duckdb --version
 
 # Configure systemd
 RUN rm /etc/systemd/system/multi-user.target.wants/console-setup.service \
@@ -193,8 +121,7 @@ RUN rm /etc/systemd/system/multi-user.target.wants/console-setup.service \
 		apt-daily.timer \
 		plymouth-log.service && \
 	# systemd-logind is disabled but not masked. It's involved in populating the XDG runtime dir sockets... somehow
-	systemctl disable docker.service containerd.service getty.target systemd-logind.service tailscaled.service \
-		nginx.service \
+	systemctl disable getty.target systemd-logind.service \
                    console-getty.service \
 		   atop.service \
                    getty@.service \
@@ -237,7 +164,6 @@ RUN usermod -l exedev -c "exe.dev user" ubuntu && \
 	mv /home/ubuntu /home/exedev && \
 	usermod -d /home/exedev exedev && \
 	usermod -aG sudo exedev && \
-	usermod -aG docker exedev && \
 	sed -i 's/^ubuntu:/exedev:/' /etc/subuid /etc/subgid && \
 	echo 'exedev ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers && \
 	echo 'Defaults:exedev verifypw=any' >> /etc/sudoers && \
@@ -260,10 +186,6 @@ ENV EXEUNTU=1
 # STOPSIGNAL SIGRTMIN+3
 
 
-# Copy the self-contained Chrome bundle
-COPY --from=chrome /headless-shell /headless-shell
-ENV PATH="/usr/local/bin:/headless-shell:${PATH}"
-
 RUN mkdir -p /home/exedev /home/exedev/.config/shelley && \
     chown exedev:exedev /home/exedev /home/exedev/.config /home/exedev/.config/shelley
 
@@ -277,23 +199,6 @@ RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> /home/exedev/.bashrc && \
     echo 'export XDG_RUNTIME_DIR="/run/user/$(id -u)"' >> /home/exedev/.bashrc && \
     echo 'export XDG_RUNTIME_DIR="/run/user/$(id -u)"' >> /home/exedev/.profile
 
-# Configure git to use 'main' as default branch name
-RUN git config --global init.defaultBranch main
-
-# Chromium blocks the compromised eMudhra intermediates only since
-# 156.0.8078.69 and 157.0.8103.20; distrust the root above them in exedev's
-# NSS database, which older builds honor too.
-RUN --mount=type=bind,source=distrust-emudhra.sh,target=/tmp/distrust-emudhra.sh \
-	bash /tmp/distrust-emudhra.sh && \
-	certutil -L -d sql:/home/exedev/.pki/nssdb | grep -q '^distrusted emSign ECC Root CA - G3  *p,p,p$'
-
-# Pre-install the DuckDB extensions the look integration's usage text needs
-# (httpfs for s3://, iceberg for iceberg_scan; iceberg loads avro itself) into
-# ~/.duckdb/extensions, so the first query works without a runtime download.
-# Extensions are per-user and per-DuckDB-version, so this must run as exedev
-# after the CLI.
-RUN duckdb -c "INSTALL httpfs; INSTALL iceberg; INSTALL avro;" && \
-    duckdb -c "SET autoinstall_known_extensions=false; LOAD httpfs; LOAD iceberg; LOAD avro;"
 
 # Switch back to root to install systemd service
 USER root
@@ -323,85 +228,9 @@ RUN chmod 644 /etc/systemd/system/exe-setup.service && \
 # It would be better if you could indicate that via an env variable or something.
 COPY init-wrapper.sh /usr/local/bin/init
 
-# Create config directories for LLM agents. `exeuntu update opencode`
-# installs OpenCode's exe.dev plugin and config under /etc/opencode.
-RUN mkdir -p \
-      /home/exedev/.claude \
-      /home/exedev/.codex \
-      /home/exedev/.pi \
-      /home/exedev/.config/opencode && \
-    chown -R exedev:exedev /home/exedev/.claude /home/exedev/.codex /home/exedev/.pi /home/exedev/.config/opencode
-
-# Copy LLM agent instructions to Claude, Codex, OpenCode, Pi, and Shelley config directories
-# Shelley and OpenCode use ~/.config/ (XDG convention).
 COPY AGENTS.md /home/exedev/.config/shelley/AGENTS.md
-RUN chown exedev:exedev /home/exedev/.config/shelley/AGENTS.md && \
-    ln -s /home/exedev/.config/shelley/AGENTS.md /home/exedev/.claude/CLAUDE.md && \
-    ln -s /home/exedev/.config/shelley/AGENTS.md /home/exedev/.codex/AGENTS.md && \
-    ln -s /home/exedev/.config/shelley/AGENTS.md /home/exedev/.config/opencode/AGENTS.md && \
-    ln -s /home/exedev/.config/shelley/AGENTS.md /home/exedev/.pi/AGENTS.md
+RUN chown exedev:exedev /home/exedev/.config/shelley/AGENTS.md
 
-# Install Claude, Codex, and OpenCode through exeuntu's direct updaters.
-USER root
-RUN exeuntu update claude && \
-    test -x /usr/local/bin/claude && \
-    /usr/local/bin/claude --version
-RUN exeuntu update codex && \
-    test -x /usr/local/bin/codex && \
-    /usr/local/bin/codex --version
-RUN exeuntu update opencode && \
-    test -x /usr/local/bin/opencode && \
-    test -f /etc/opencode/plugins/exe-dev.js && \
-    HOME=/tmp/opencode-smoke /usr/local/bin/opencode --version && \
-    rm -rf /tmp/opencode-smoke
-
-# Install pi (pi-coding-agent) through exeuntu's updater.
-ARG PI_VERSION=
-USER exedev
-RUN if [ -n "${PI_VERSION}" ]; then \
-        exeuntu update pi --home /home/exedev --version "${PI_VERSION}"; \
-    else \
-        exeuntu update pi --home /home/exedev; \
-    fi && \
-    test -x /home/exedev/.local/bin/pi && \
-    /home/exedev/.local/bin/pi --version
-USER root
-RUN ln -sf /home/exedev/.local/bin/pi /usr/local/bin/pi
-
-# Install the pi exe.dev extension (LLM integration + environment context).
-# The bundled public catalog supplies pricing and compatibility metadata only;
-# reflection-discovered integrations supply every model and provider route.
-COPY pi-extension/ /home/exedev/.pi/agent/extensions/exe-dev/
-RUN curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors --max-time 30 \
-      https://exe.dev/llm-gateway-models.json \
-      -o /home/exedev/.pi/agent/extensions/exe-dev/catalog.json && \
-    jq -e '.schemaVersion | numbers' \
-      /home/exedev/.pi/agent/extensions/exe-dev/catalog.json > /dev/null
-RUN chown -R exedev:exedev /home/exedev/.pi/agent
-
-# Pre-install fd at the path pi checks first (~/.pi/agent/bin/fd), so pi
-# doesn't try (and on a fresh VM, often fail with a GitHub API 403) to
-# download it on first use.
-RUN ARCH=$(uname -m) && \
-    case ${ARCH} in \
-        x86_64) FD_ARCH="x86_64-unknown-linux-gnu" ;; \
-        aarch64|arm64) FD_ARCH="aarch64-unknown-linux-gnu" ;; \
-        *) echo "Unsupported architecture: ${ARCH}" && exit 1 ;; \
-    esac && \
-    FD_VERSION=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/sharkdp/fd/releases/latest | sed 's|.*/tag/||') && \
-    mkdir -p /home/exedev/.pi/agent/bin && \
-    TMPDIR=$(mktemp -d) && \
-    curl -fsSL "https://github.com/sharkdp/fd/releases/download/${FD_VERSION}/fd-${FD_VERSION}-${FD_ARCH}.tar.gz" | \
-        tar -xz -C "${TMPDIR}" && \
-    mv "${TMPDIR}/fd-${FD_VERSION}-${FD_ARCH}/fd" /home/exedev/.pi/agent/bin/fd && \
-    rm -rf "${TMPDIR}" && \
-    chmod 0755 /home/exedev/.pi/agent/bin/fd && \
-    chown -R exedev:exedev /home/exedev/.pi/agent/bin
-
-# Custom nginx config and index page (nginx is installed but disabled by default)
-COPY nginx.conf /etc/nginx/sites-available/default
-COPY index.html /var/www/html/index.html
-RUN chmod 644 /var/www/html/index.html
 
 # Install xterm-ghostty terminfo for Ghostty terminal support
 COPY xterm-ghostty.terminfo /tmp/xterm-ghostty.terminfo

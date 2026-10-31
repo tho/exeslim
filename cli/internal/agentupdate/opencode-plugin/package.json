@@ -1,8 +1,0 @@
-{
-  "name": "opencode-exe-dev-plugin",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "test": "node --test"
-  }
-}
