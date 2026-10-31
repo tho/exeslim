@@ -105,13 +105,13 @@ jobs:
       # The image, checked before anything is published. Unbooted: the
       # metadata exe.dev reads, the build steps whose order or file name is
       # load-bearing, and the svc- profile offline: systemd-analyze, inside the
-      # image (its systemd is the one that matters), on the hello example
-      # unit with the drop-in applied; threshold 20 means
-      # exposure 2.0, and a unit the drop-in misses scores ~9.4. Booted: hello
-      # built on this image using the shared Docker builder, run under systemd.
-      # After boot only the unit Docker cannot run may have failed, init's
-      # low-port sysctl must be in place, and hello must answer. See
-      # docs/internals.md#validating-the-hardening-profile.
+      # image (its systemd is the one that matters), on the hello example unit
+      # with the drop-in applied; threshold 20 means exposure 2.0, and a unit
+      # the drop-in misses scores ~9.4. Booted: hello built on this image using
+      # the shared Docker builder, run under systemd. After boot only the unit
+      # Docker cannot run may have failed, init's low-port sysctl must be in
+      # place, and hello must answer. See
+      # docs/developing.md#validating-the-hardening-profile.
       - name: Check the image
         run: |
           set -euo pipefail
