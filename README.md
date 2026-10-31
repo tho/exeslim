@@ -39,12 +39,13 @@ workstation tools. Port 9999 is Shelley's; do not bind a service to it.
 
 ## Tags
 
-Each build publishes `:latest`, `:<date>`, `:<sha>` and `:<date>.<run>.<attempt>`
-(the build id) for the base, with `-shelley` and `-shelley-full` suffixes for
-the variants. Only the build id is immutable; exe.dev caches `:latest` for an
-hour and every other tag for 24 hours, so pin the build id or a digest
-(`ghcr.io/tho/exeslim@sha256:<digest>`) wherever one specific build matters: a
-derived image's `BASE`, or testing a change pushed minutes ago. The hello
+Each build publishes `:<date>.<run>.<attempt>` (the build id) and `:latest`
+for the base, with `-shelley` and `-shelley-full` suffixes for the variants.
+Only the build id is immutable; exe.dev caches `:latest` for up to an hour, so
+pin the build id or a digest (`ghcr.io/tho/exeslim@sha256:<digest>`) wherever
+one specific build matters: a derived image's `BASE`, or testing a change
+pushed minutes ago. The commit behind an image is in its
+`org.opencontainers.image.revision` label. The hello
 example from [`examples/hello`](examples/hello) is published alongside as
 `ghcr.io/tho/exeslim-hello`.
 

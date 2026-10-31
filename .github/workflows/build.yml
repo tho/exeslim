@@ -79,7 +79,6 @@ jobs:
           # Read the clock once, so a run crossing midnight cannot tag two days.
           now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           {
-            echo "date=${now%%T*}"
             echo "build=${now%%T*}.${{ github.run_number }}.${{ github.run_attempt }}"
             echo "created=$now"
           } >> "$GITHUB_OUTPUT"
@@ -259,13 +258,13 @@ jobs:
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.created=${{ steps.tag.outputs.created }}
-          # Moving:    :latest, :<date>, :<sha>
-          # Immutable: :<date>.<run_number>.<run_attempt>
+          # :latest moves; the build id is immutable. No :<date> or :<sha>:
+          # both would move (two pushes in a day, the weekly rebuild of one
+          # commit) while looking like pins. The commit is in the revision
+          # label.
           tags: |
             ghcr.io/tho/exeslim:latest
-            ghcr.io/tho/exeslim:${{ steps.tag.outputs.date }}
             ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }}
-            ghcr.io/tho/exeslim:${{ github.sha }}
           # exe.dev reads image metadata (Cmd, Labels, ExposedPorts) directly.
           # Provenance/SBOM turn the push into an attestation manifest list,
           # which can hide that metadata from a plain OCI pull.
@@ -309,9 +308,7 @@ jobs:
             BASE=ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }}
           tags: |
             ghcr.io/tho/exeslim:latest-shelley
-            ghcr.io/tho/exeslim:${{ steps.tag.outputs.date }}-shelley
             ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }}-shelley
-            ghcr.io/tho/exeslim:${{ github.sha }}-shelley
           provenance: false
           sbom: false
 
@@ -326,8 +323,6 @@ jobs:
             BASE=ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }}-shelley
           tags: |
             ghcr.io/tho/exeslim:latest-shelley-full
-            ghcr.io/tho/exeslim:${{ steps.tag.outputs.date }}-shelley-full
             ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }}-shelley-full
-            ghcr.io/tho/exeslim:${{ github.sha }}-shelley-full
           provenance: false
           sbom: false
