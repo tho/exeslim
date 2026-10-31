@@ -1,6 +1,5 @@
 # syntax=docker/dockerfile:1
 
-
 FROM ubuntu:24.04
 
 # Switch from dash to bash by default.
@@ -36,10 +35,8 @@ RUN apt-get update && \
 	apt-get clean && \
 	rm -rf /var/lib/apt/lists/*
 
-
 # exe-init manages DNS directly, so systemd-resolved has nothing to do.
 RUN apt-get purge -y systemd-resolved
-
 
 # Configure systemd
 RUN systemctl mask -- getty.target \
@@ -144,7 +141,6 @@ RUN echo '/dev/vda / ext4 defaults,x-systemd.growfs 0 1' > /etc/fstab
 # that also run at boot.
 COPY tmpfiles-tmp.conf /etc/tmpfiles.d/tmp.conf
 
-
 # https://github.com/trfore/docker-ubuntu2404-systemd/blob/main/Dockerfile suggests the following
 # might be useful?
 # STOPSIGNAL SIGRTMIN+3
@@ -163,21 +159,11 @@ RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> /home/exedev/.bashrc && \
     echo 'export XDG_RUNTIME_DIR="/run/user/$(id -u)"' >> /home/exedev/.bashrc && \
     echo 'export XDG_RUNTIME_DIR="/run/user/$(id -u)"' >> /home/exedev/.profile
 
-
 # Switch back to root to install systemd service
 USER root
 
 # Disable Ubuntu's default MOTD (the sudo hint, etc.)
 RUN rm -rf /etc/update-motd.d/* /etc/motd && touch /home/exedev/.hushlogin && chown exedev:exedev /home/exedev/.hushlogin
-
-
-# Create systemd socket and service for Shelley (socket activation).
-# The shelley binary itself is installed at vm creation.
-COPY shelley.socket /etc/systemd/system/shelley.socket
-COPY shelley.service /etc/systemd/system/shelley.service
-COPY tmpfiles-shelley.conf /etc/tmpfiles.d/shelley.conf
-RUN chmod 644 /etc/systemd/system/shelley.socket /etc/systemd/system/shelley.service && \
-    systemctl enable shelley.socket
 
 # Create systemd oneshot service for /exe.dev/setup script
 COPY exe-setup.service /etc/systemd/system/exe-setup.service
@@ -192,7 +178,6 @@ COPY init-wrapper.sh /usr/local/bin/init
 COPY AGENTS.md /home/exedev/.config/shelley/AGENTS.md
 RUN chown exedev:exedev /home/exedev/.config/shelley/AGENTS.md
 
-
 # Empty the machine ID baked in by package configuration, so each VM built from
 # this image generates its own on first boot. A shared one defeats anything that
 # assumes machine IDs are unique, such as systemd's FixedRandomDelay=. Empty
@@ -202,9 +187,8 @@ RUN chown exedev:exedev /home/exedev/.config/shelley/AGENTS.md
 RUN : > /etc/machine-id && \
 	ln -sf /etc/machine-id /var/lib/dbus/machine-id
 
-# Expose the web server ports
-EXPOSE 8000 9999
+# Expose the web server port. 9999 is Shelley's; the Shelley variants add it.
+EXPOSE 8000
 
 LABEL "exe.dev/login-user"="exedev"
-LABEL "exe.dev/install-shelley"="true"
 CMD ["/usr/local/bin/init"]
