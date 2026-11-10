@@ -46,7 +46,8 @@ nginx, the MOTD, the terminfo, `unminimize`, `locales-all` and `ENV EXEUNTU=1`
 (nothing in exeuntu reads it, and this image is not exeuntu). Also absent:
 `openssh-server`, since exe.dev supplies its own sshd from `/exe.dev/bin`; a
 firewall, since nothing listens on the network interface and exe.dev reaches
-the VM over VSOCK and loopback.
+the VM over VSOCK and loopback (the Shelley variants' one rule is between local
+users, not the network).
 
 ## Facts that live in several places
 
@@ -58,6 +59,9 @@ When you change one, update the others:
   and its header, the check in "Check the Shelley variants" in
   `.github/workflows/build.yml`, and the Shelley sections of `README.md` and
   `AGENTS.md`.
+- The Shelley guard: `image/shelley-guard.nft`, which holds the reasons, and
+  the sentences that point to it in `README.md`, `deploying.md` and
+  `AGENTS.md`. CI reads the UID range from the rule.
 
 ## Checking a change locally
 

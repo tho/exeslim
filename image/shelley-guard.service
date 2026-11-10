@@ -1,0 +1,15 @@
+# Loads /etc/shelley-guard.nft. Not enabled: shelley.socket requires it, through
+# shelley.socket.d/10-guard.conf.
+
+[Unit]
+Description=Keep svc- units off Shelley's port
+# shelley.socket starts before basic.target, which default dependencies would
+# order this unit after.
+DefaultDependencies=no
+Conflicts=shutdown.target
+Before=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/shelley-guard.nft

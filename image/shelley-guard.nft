@@ -1,0 +1,32 @@
+# Keeps svc-<app> units off Shelley's port. The reasons are here; the units
+# and docs that mention the guard point to this file.
+#
+# Shelley listens on 127.0.0.1:9999 and trusts any request that carries an
+# X-Exedev-Userid header, which exe.dev's proxy sets and any local process can
+# forge. Shelley runs as exedev, who has passwordless sudo, so a compromised
+# service that could reach the port would be root. The hardening profile cannot
+# close this itself: IPAddressDeny= has no notion of ports.
+#
+# 61184-65519 is the range systemd allocates DynamicUser= UIDs from, the users
+# every svc-<app> unit runs as. It is fixed when systemd is built, and CI
+# checks it against the image's systemd. A unit that sets User= to a static
+# user is outside it, one more reason docs/deploying.md forbids that.
+#
+# exe.dev supplies the kernel and the image carries no modules, so the rule
+# can use only what that kernel has built in. The ip family is enough: Shelley
+# binds IPv4 only, and an AF_INET6 socket reaches 127.0.0.1 as IPv4. reject is
+# a separate kernel feature from the nf_tables core; exe.dev's kernel has it
+# (checked on a VM, 2026-11-09), and a refused connection is easier to
+# diagnose than the timeout drop would give. Should a kernel lack it, the rule
+# does not load and Shelley does not listen (shelley-guard-socket.conf).
+
+# Replace the table if it is already loaded, so a restart of the unit works.
+table ip shelley_guard
+delete table ip shelley_guard
+
+table ip shelley_guard {
+	chain output {
+		type filter hook output priority 0; policy accept;
+		ip daddr 127.0.0.0/8 tcp dport 9999 meta skuid 61184-65519 reject with tcp reset
+	}
+}

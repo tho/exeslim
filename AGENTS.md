@@ -13,6 +13,8 @@ Git, Docker, nginx, Chrome. `apt` works for anything you genuinely need.
 **Shelley image variants:** `-shelley` adds jq, sqlite3 and lsof; `-shelley-full`
 also adds Git, ffmpeg, ImageMagick and headless Chrome (`/headless-shell`), for
 Shelley's own features. Still no compiler, Python, Node.js, Go or Docker.
+Both load a firewall rule (`shelley-guard.service`) that keeps `svc-<app>`
+units off Shelley's port 9999; leave it in place.
 
 **A service's unit is hardened only if named `svc-<app>.service`**, through the
 drop-in `/etc/systemd/system/svc-.service.d/50-hardening.conf`: dynamic UID,

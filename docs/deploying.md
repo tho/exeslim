@@ -96,10 +96,12 @@ Egress is open (add `IPAddressDeny=any` and `IPAddressAllow=localhost ...` in a
 drop-in if that matters; keep `localhost`, the proxy connects over it). The
 service can read `/usr` and world-readable `/etc`. It can connect to any Unix
 socket its UID may open, and to abstract-namespace sockets, which have no
-permissions to check; only the system bus is closed. It owns its own state and
-credentials. It can fill the disk; only the ext4 root reserve, which root alone
-can use, keeps journald and `sudo` working then. Setup scripts, other units and
-SSH sessions run without the profile. No Docker: its daemon is root-equivalent.
+permissions to check; only the system bus is closed. It can connect to
+anything listening on loopback except, on the Shelley variants, Shelley's port
+9999 ([`image/shelley-guard.nft`](../image/shelley-guard.nft) says why). It owns its own state and credentials. It can fill the disk; only the ext4
+root reserve, which root alone can use, keeps journald and `sudo` working then.
+Setup scripts, other units and SSH sessions run without the profile. No Docker:
+its daemon is root-equivalent.
 
 ## Checking the profile in CI
 

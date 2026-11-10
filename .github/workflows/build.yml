@@ -187,7 +187,8 @@ jobs:
       # Unbooted: metadata, the enabled socket (the label only installs the
       # binary; the socket starts it) and tools for both variants, and the full
       # variant's feature tools. Booted: the full variant's socket listens on
-      # 9999 and on the CLI's socket in ~/.config/shelley, as exedev.
+      # 9999 and on the CLI's socket in ~/.config/shelley, as exedev, and the
+      # guard (image/shelley-guard.nft) refuses a DynamicUser= process.
       - name: Check the Shelley variants
         run: |
           set -euo pipefail
@@ -203,10 +204,27 @@ jobs:
             # and package configuration can write one, so check it again.
             docker run --rm "$img" bash -euc '
               test -L /etc/systemd/system/sockets.target.wants/shelley.socket
+              systemd-analyze verify shelley-guard.service
+              test -f /etc/systemd/system/shelley.socket.d/10-guard.conf
               [[ ! -s /etc/machine-id ]]
               for b in jq sqlite3 lsof; do command -v "$b" >/dev/null || { echo "missing $b"; exit 1; }; done' ||
-              { echo "$v: shelley.socket, machine-id or tools are wrong"; exit 1; }
+              { echo "$v: shelley.socket, its guard, machine-id or tools are wrong"; exit 1; }
           done
+
+          # The guard's UID range against the one this systemd was built with,
+          # which systemd-dev's pkg-config file records and nothing in the image
+          # prints. The booted probe sees only the one UID it was given.
+          guard=$(sed -n 's/.* meta skuid \([0-9]*\)-\([0-9]*\) .*/\1 \2/p' image/shelley-guard.nft)
+          read -r guard_min guard_max <<<"$guard"
+          [[ -n ${guard_max-} ]] || { echo "cannot read the UID range from image/shelley-guard.nft"; exit 1; }
+          dynamic=$(docker run --rm ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }}-shelley bash -euc '
+            cd /tmp
+            apt-get update -qq
+            apt-get download -qq "systemd-dev=$(dpkg-query -W -f="\${Version}" systemd)"
+            dpkg-deb --fsys-tarfile systemd-dev_*.deb | tar -xO ./usr/share/pkgconfig/systemd.pc >systemd.pc
+            echo "$(sed -n "s/^dynamic_uid_min=//p" systemd.pc) $(sed -n "s/^dynamic_uid_max=//p" systemd.pc)"')
+          [[ $dynamic == "$guard_min $guard_max" ]] ||
+            { echo "systemd allocates DynamicUser= UIDs from '$dynamic', the guard matches $guard_min-$guard_max"; exit 1; }
 
           docker run --rm ghcr.io/tho/exeslim:${{ steps.tag.outputs.build }}-shelley-full bash -euc '
             for b in /headless-shell/headless-shell ffmpeg ffprobe convert git; do
@@ -232,6 +250,23 @@ jobs:
           sock=$(docker exec shelley stat -c '%U %F' /home/exedev/.config/shelley/shelley.sock /home/exedev/.config/shelley)
           [[ $sock == $'exedev socket\nexedev directory' ]] ||
             { echo "shelley.sock or its directory is wrong:"; echo "$sock"; exit 1; }
+
+          # A dynamic user's connection is refused (bash exits 1; a timeout
+          # would be 124) while root's is accepted, so the rule is what stopped
+          # it. Kept last: with no Shelley binary here, the accepted
+          # connection leaves shelley.socket with nothing to start.
+          [[ $(docker exec shelley systemctl is-active shelley-guard.service) == active ]] ||
+            { echo "shelley-guard.service is not active"; exit 1; }
+          connect='timeout 3 bash -c ": </dev/tcp/127.0.0.1/9999" 2>/dev/null'
+          probe=$(docker exec shelley systemd-run --quiet --wait --pipe --collect -p DynamicUser=yes \
+            bash -c "id -u; $connect; echo \$?")
+          uid=${probe%%$'\n'*}
+          (( uid >= guard_min && uid <= guard_max )) ||
+            { echo "DynamicUser= UID $uid is outside the range the guard matches"; exit 1; }
+          [[ ${probe##*$'\n'} == 1 ]] ||
+            { echo "a DynamicUser= process was not refused on Shelley's port (uid, exit status): $probe"; exit 1; }
+          docker exec shelley bash -c "$connect" ||
+            { echo "root cannot reach Shelley's port, so the check above proves nothing"; exit 1; }
 
       # The booted check's failures are otherwise mute: a boot-wait timeout
       # exits 124 with nothing to read, and the weekly rebuild runs unattended.

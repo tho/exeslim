@@ -37,6 +37,11 @@ adds what Shelley's browser, voice, video and git features run: headless Chrome,
 ffmpeg, ImageMagick and Git (about 1.4 GB). Neither adds compilers or other
 workstation tools. Port 9999 is Shelley's; do not bind a service to it.
 
+Shelley acts as `exedev`, who has passwordless sudo, for any local process
+that connects to that port, so the variants refuse connections to it from
+`svc-<app>` units ([`image/shelley-guard.nft`](image/shelley-guard.nft)).
+Anything else on the VM can still reach Shelley.
+
 ## Tags
 
 Each build publishes `:<date>.<run>.<attempt>` (the build id) and `:latest`
