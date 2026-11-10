@@ -21,7 +21,10 @@ RUN systemctl enable shelley.socket \
 	&& DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
 		jq sqlite3 lsof nftables \
 	&& apt-get clean \
-	&& rm -rf /var/lib/apt/lists/*
+	&& rm -rf /var/lib/apt/lists/* \
+	# Package configuration can bake in a machine ID, which every VM would then
+	# share; the base emptied it before these packages were installed.
+	&& : > /etc/machine-id
 
 EXPOSE 9999
 

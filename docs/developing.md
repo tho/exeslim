@@ -62,6 +62,9 @@ When you change one, update the others:
 - The Shelley guard: `image/shelley-guard.nft`, which holds the reasons, and
   the sentences that point to it in `README.md`, `deploying.md` and
   `AGENTS.md`. CI reads the UID range from the rule.
+- The hello example's Dockerfile: `examples/hello/Dockerfile` and its copy in
+  `deploying.md`, which names no Go version so that a Dependabot bump of the
+  example does not touch it.
 
 ## Checking a change locally
 

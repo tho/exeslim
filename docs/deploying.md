@@ -10,12 +10,13 @@ VM belongs to the service.
 
 [`examples/hello`](../examples/hello) is the complete minimal case; CI publishes
 it as `ghcr.io/tho/exeslim-hello`. The derived Dockerfile builds a static
-binary, copies it and the unit in, and enables the unit:
+binary, copies it and the unit in, and enables the unit (the example pins the
+Go image by version and digest, which Dependabot keeps current):
 
 ```dockerfile
 ARG BASE=ghcr.io/tho/exeslim:<build-id>
 
-FROM golang:1.27 AS build
+FROM golang:<version> AS build
 WORKDIR /src
 COPY go.mod main.go ./
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /hello

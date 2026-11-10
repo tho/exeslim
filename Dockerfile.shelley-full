@@ -51,7 +51,10 @@ RUN apt-get update \
 		git \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/* \
-	&& git config --system init.defaultBranch main
+	&& git config --system init.defaultBranch main \
+	# Package configuration can bake in a machine ID, which every VM would then
+	# share; the base emptied it before these packages were installed.
+	&& : > /etc/machine-id
 
 COPY --from=chrome /headless-shell /headless-shell
 # shelley.service sets its own PATH with /headless-shell first; this is for
