@@ -18,7 +18,9 @@ units off Shelley's port 9999; leave it in place.
 
 **A service's unit is hardened only if named `svc-<app>.service`**, through the
 drop-in `/etc/systemd/system/svc-.service.d/50-hardening.conf`: dynamic UID,
-read-only filesystem except `StateDirectory=`, no D-Bus, no capabilities.
+read-only filesystem except `StateDirectory=`, no D-Bus, no capabilities. An
+app may still sandbox itself with Landlock or seccomp; test that it is
+enforced, since many fall back to running without one.
 Rules:
 
 - Do not add `User=` or loosen these settings to make something work.

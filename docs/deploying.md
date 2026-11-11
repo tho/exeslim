@@ -80,6 +80,12 @@ WantedBy=multi-user.target
   socket, with peer authentication mapping the service's user, `svc-<app>`
   (resolvable through nss-systemd), to a role. `/dev/log` works too, though
   stdout (journald) is simpler. The system bus is inaccessible.
+- **An app can sandbox itself.** Landlock and `seccomp(2)` are allowed, since a
+  process can use them only to restrict itself. Sandboxes that need user
+  namespaces or setuid (bubblewrap, Firejail, Chrome's own) cannot start. Many
+  apps carry on unconfined when their sandbox fails, some while reporting it
+  enabled, and Landlock also needs the kernel to enforce it: test that the
+  sandbox refuses something before relying on it.
 
 What the profile sets, and why, is in
 [`image/svc-hardening.conf`](../image/svc-hardening.conf), one comment per
@@ -90,6 +96,25 @@ To loosen a setting on purpose, add a drop-in that sorts after
 `50-hardening.conf`, such as `svc-<app>.service.d/60-proc.conf`. Put it in the
 image rather than using `systemctl edit` on the VM, which writes an override
 the image does not have and CI never sees.
+
+## Agent runtimes
+
+An AI agent runtime runs shell commands its model chose as the service's own
+user. The profile confines that user, not the app from itself: those commands
+can read the app's config and credentials, `$CREDENTIALS_DIRECTORY` included,
+and rewrite its policy. Only the app's own sandbox stands between them, so:
+
+- **Turn on its Landlock or seccomp sandbox**, in a build that includes it.
+- **Keep the workspace apart from config.** A directory under
+  `$STATE_DIRECTORY` that holds neither config nor secrets, so the sandbox can
+  leave those out.
+- **Test that it refuses.** Ask the agent to read its own config file; anything
+  but a permission error means its commands run unconfined.
+- **Bake in the tools it runs.** Its commands inherit the profile: no `apt`, no
+  `sudo`, nothing writable outside the state directory and `/tmp`.
+- **JITs need `MemoryDenyWriteExecute=no`**: WASM plugins, Node, Chromium. That
+  loosens the profile for the whole unit; add it in a drop-in only if the
+  feature is needed.
 
 ## What the profile does not stop
 
