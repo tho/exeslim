@@ -190,6 +190,9 @@ RUN apt-get update && \
 # such unit, so nothing here changes until one exists. See docs/deploying.md.
 COPY --chmod=0644 image/svc-hardening.conf /etc/systemd/system/svc-.service.d/50-hardening.conf
 
+# Gives a svc- unit a writable HOME. See docs/deploying.md.
+COPY --chmod=0755 image/svc-exec.sh /usr/local/bin/svc-exec
+
 COPY AGENTS.md /home/exedev/.config/shelley/AGENTS.md
 RUN chown exedev:exedev /home/exedev/.config/shelley/AGENTS.md
 

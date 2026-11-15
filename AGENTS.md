@@ -24,7 +24,10 @@ enforced, since many fall back to running without one.
 Rules:
 
 - Do not add `User=` or loosen these settings to make something work.
-- Write only to `$STATE_DIRECTORY`.
+- Write only to `$STATE_DIRECTORY`. `HOME` is `/`, read-only; for an app that
+  writes under `~`, set `StateDirectory=` and start it through
+  `/usr/local/bin/svc-exec`, which points `HOME` and the XDG directories at
+  the state directory.
 - Connect to local databases over their Unix socket with peer authentication
   (the service's user is `svc-<app>`), or over TCP at `127.0.0.1`.
 - Listen on `127.0.0.1:8000`, the proxy's default port; the proxy connects from

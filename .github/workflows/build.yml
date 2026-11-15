@@ -137,6 +137,23 @@ jobs:
           done
           docker exec hello curl -fsS --retry 10 --retry-connrefused --retry-delay 1 http://127.0.0.1:8000/
 
+          # svc-exec: a svc- unit's HOME is /, and the writable state directory
+          # through the wrapper. The user name shows the profile applied. The
+          # unit must exit 0: the profile would restart it and --wait hang.
+          inner='echo "$HOME $XDG_CONFIG_HOME" && touch "$HOME/w" && echo writable'
+          env=$(docker exec hello systemd-run --quiet --wait --pipe --collect \
+            --unit=svc-envcheck -p StateDirectory=envcheck \
+            sh -c 'id -un; echo "$HOME"; svc-exec sh -c "$0" || true' "$inner")
+          [[ $env == $'svc-envcheck\n/\n/var/lib/envcheck /var/lib/envcheck/.config\nwritable' ]] ||
+            { echo "svc-exec or a svc- unit's HOME is wrong:"; echo "$env"; exit 1; }
+          # Without StateDirectory= it exits 78 and is not restarted (124 if
+          # it is).
+          status=0
+          timeout 30 docker exec hello systemd-run --quiet --wait --pipe --collect \
+            --unit=svc-nostate /usr/local/bin/svc-exec true || status=$?
+          [[ $status == 78 ]] ||
+            { echo "svc-exec without StateDirectory= did not fail the unit with 78: $status"; exit 1; }
+
       # The variants, on this run's base (full on Shelley), loaded for the
       # checks and the publish step. Their Dockerfiles override the
       # descriptive labels; the rest are inherited.

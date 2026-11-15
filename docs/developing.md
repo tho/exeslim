@@ -55,6 +55,8 @@ When you change one, update the others:
 
 - The hardening profile: `image/svc-hardening.conf`, the rules in
   `deploying.md`, and the summary in `AGENTS.md`.
+- `svc-exec`: `image/svc-exec.sh`, the `HOME` bullet in `deploying.md`, the rule
+  in `AGENTS.md`, and its check in "Check the image".
 - The Shelley variants' packages: `Dockerfile.shelley`, `Dockerfile.shelley-full`
   and its header, the check in "Check the Shelley variants" in
   `.github/workflows/build.yml`, and the Shelley sections of `README.md` and
