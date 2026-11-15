@@ -30,3 +30,8 @@ run-bash: build-exeslim
 	  --tmpfs /tmp \
 	  --tmpfs /sys/fs/cgroup:rw \
 	  ghcr.io/tho/exeslim:dev bash
+
+check: ## Build every image as :dev and run CI's checks on them
+	ci/build.sh dev
+	ci/check-image.sh dev
+	ci/check-shelley.sh dev

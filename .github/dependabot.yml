@@ -4,7 +4,7 @@ updates:
   - package-ecosystem: docker
     # The golang build images too: CI builds the example and the probe on
     # every run.
-    directories: ["/", "/examples/hello", "/.github/sandbox-probe"]
+    directories: ["/", "/examples/hello", "/ci/sandbox-probe"]
     schedule:
       interval: weekly
       day: monday
