@@ -2,8 +2,9 @@ version: 2
 
 updates:
   - package-ecosystem: docker
-    # The example's golang build image too: CI builds it on every run.
-    directories: ["/", "/examples/hello"]
+    # The golang build images too: CI builds the example and the probe on
+    # every run.
+    directories: ["/", "/examples/hello", "/.github/sandbox-probe"]
     schedule:
       interval: weekly
       day: monday
@@ -13,6 +14,11 @@ updates:
       default-days: 1
     commit-message:
       prefix: "chore(deps)"
+    groups:
+      # One pull request for both pins, so that they do not drift apart.
+      golang:
+        patterns:
+          - golang
     ignore:
       # Keep the image on Ubuntu 24.04 LTS. Digest updates to this tag still
       # flow, while moving to another Ubuntu release remains a human decision.

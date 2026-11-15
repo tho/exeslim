@@ -64,16 +64,20 @@ When you change one, update the others:
 - The Shelley guard: `image/shelley-guard.nft`, which holds the reasons, and
   the sentences that point to it in `README.md`, `deploying.md` and
   `AGENTS.md`. CI reads the UID range from the rule.
+- The golang build image, pinned by digest in `examples/hello/Dockerfile` and
+  `.github/sandbox-probe/Dockerfile`; Dependabot bumps both in one pull
+  request.
 - The hello example's Dockerfile: `examples/hello/Dockerfile` and its copy in
   `deploying.md`, which names no Go version so that a Dependabot bump of the
   example does not touch it.
 
 ## Checking a change locally
 
-First `hadolint Dockerfile* examples/*/Dockerfile`, which is what CI runs
-before it builds (as a recursive `Dockerfile*`, so a new Dockerfile anywhere
-in the repository is linted without a workflow change). `.hadolint.yaml` lists
-the rules this repository ignores and why; a rule that is wrong for one
+First `hadolint Dockerfile* examples/*/Dockerfile .github/*/Dockerfile`, which
+is what CI runs before it builds (as a recursive `Dockerfile*`, so a new
+Dockerfile is linted without a workflow change, and `.github/*/Dockerfile` in
+a second step, since that glob skips hidden directories). `.hadolint.yaml`
+lists the rules this repository ignores and why; a rule that is wrong for one
 instruction gets a `# hadolint ignore=` comment above that instruction, with
 the reason above it. A finding in one of exeuntu's lines in the `Dockerfile`
 is handled in `.hadolint.yaml`, not by editing the line.
@@ -95,6 +99,29 @@ enforces what systemd configures; several of these settings are silently
 disabled on a kernel or architecture that lacks them. That was last checked by
 hand on 2026-10-11, from inside a `svc-` unit on an exe.dev VM. Repeat it when
 the drop-in gains a setting or exe.dev changes its kernel.
+
+CI also runs `.github/sandbox-probe` in a `svc-` unit: the seccomp and Landlock
+system calls must pass the filter, and a Landlock ruleset must refuse a read.
+That proves the filter, and Landlock on the runner's kernel only; on a runner
+without Landlock the probe prints `landlock unavailable` and the step warns
+instead of failing. On an
+exe.dev VM the probe last passed on 2026-11-15, with Landlock ABI 6. Repeat it
+when exe.dev changes its kernel:
+
+```sh
+docker build --platform linux/amd64 -o probe .github/sandbox-probe
+scp probe/sandbox-probe <vm>.exe.xyz:
+ssh <vm>.exe.xyz 'sudo install -m 0755 sandbox-probe /usr/local/bin/ &&
+  sudo systemd-run --quiet --wait --pipe --collect --unit=svc-sandbox-probe \
+    sh -c "/usr/local/bin/sandbox-probe || true";
+  sudo rm -f /usr/local/bin/sandbox-probe; rm -f sandbox-probe'
+```
+
+It must end with `landlock enforced`; `landlock unavailable` means the VM's
+kernel has no Landlock. Otherwise it names the call that failed and whether
+the filter or the kernel refused it. The `|| true` keeps the profile from
+restarting a failed probe for ever, and the last line removes the probe from
+the VM.
 
 In prose, never use em dashes, en dashes or spaced hyphens as sentence
 interrupters. exeuntu's own lines are exempt: they are kept verbatim.

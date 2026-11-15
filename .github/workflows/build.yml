@@ -37,6 +37,10 @@ jobs:
         with:
           dockerfile: Dockerfile*
           recursive: true
+      # Again for .github, which that glob skips as a hidden directory.
+      - uses: hadolint/hadolint-action@06be81baf89a55ffd0e24b8f04a4185738dd3387 # v3.5.0
+        with:
+          dockerfile: .github/*/Dockerfile
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         with:
@@ -153,6 +157,23 @@ jobs:
             --unit=svc-nostate /usr/local/bin/svc-exec true || status=$?
           [[ $status == 78 ]] ||
             { echo "svc-exec without StateDirectory= did not fail the unit with 78: $status"; exit 1; }
+
+          # A svc- unit can sandbox itself: the profile's filter passes
+          # seccomp(2) and Landlock, and this kernel enforces a Landlock
+          # ruleset. A runner kernel without Landlock only warns: the filter
+          # is still checked, and the image does not choose the runner.
+          # Nonzero uid: the profile applied. Exits 0 as above.
+          out=$(mktemp -d)
+          docker build --builder default --provenance=false --sbom=false \
+            -o "$out" .github/sandbox-probe
+          docker cp "$out/sandbox-probe" hello:/usr/local/bin/sandbox-probe
+          probe=$(docker exec hello systemd-run --quiet --wait --pipe --collect \
+            --unit=svc-sandbox-probe sh -c '/usr/local/bin/sandbox-probe || true')
+          re=$'^uid [1-9][0-9]*\nseccomp allowed\n(landlock abi [0-9]+\nlandlock enforced|landlock unavailable: [^\n]+)$'
+          [[ $probe =~ $re ]] ||
+            { echo "a svc- unit cannot sandbox itself:"; echo "$probe"; exit 1; }
+          [[ $probe != *"landlock unavailable"* ]] ||
+            echo "::warning::Landlock enforcement not checked: ${probe##*$'\n'}"
 
       # The variants, on this run's base (full on Shelley), loaded for the
       # checks and the publish step. Their Dockerfiles override the
