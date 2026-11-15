@@ -29,9 +29,10 @@ that way:
 - Files exeuntu also has stay at exeuntu's path and content: `init-wrapper.sh`,
   `exe-setup.service`, `tmpfiles-tmp.conf`, `tmpfiles-shelley.conf`,
   `shelley.service`, `shelley.socket`, `distrust-emudhra.sh`, `LICENSE`, and the
-  head of `AGENTS.md` and `Makefile`. If one must differ, say why in the commit.
+  head of `AGENTS.md` and `Makefile` (the `check` target is appended). If one
+  must differ, say why in the commit.
 - exeslim's own files live where exeuntu has nothing: `image/`, `examples/`,
-  `docs/`, `.github/`, `.hadolint.yaml`, `Dockerfile.shelley*`.
+  `docs/`, `ci/`, `.github/`, `.hadolint.yaml`, `Dockerfile.shelley*`.
 
 Resolving a merge: a conflict in the `Dockerfile` is upstream changing a line
 exeslim deleted or its neighbour; keep the deletion unless the change is
@@ -56,16 +57,16 @@ When you change one, update the others:
 - The hardening profile: `image/svc-hardening.conf`, the rules in
   `deploying.md`, and the summary in `AGENTS.md`.
 - `svc-exec`: `image/svc-exec.sh`, the `HOME` bullet in `deploying.md`, the rule
-  in `AGENTS.md`, and its check in "Check the image".
-- The Shelley variants' packages: `Dockerfile.shelley`, `Dockerfile.shelley-full`
-  and its header, the check in "Check the Shelley variants" in
-  `.github/workflows/build.yml`, and the Shelley sections of `README.md` and
+  in `AGENTS.md`, and its check in `ci/check-image.sh`.
+- The Shelley variants' packages: `Dockerfile.shelley`,
+  `Dockerfile.shelley-full` and its header, the check in
+  `ci/check-shelley.sh`, and the Shelley sections of `README.md` and
   `AGENTS.md`.
 - The Shelley guard: `image/shelley-guard.nft`, which holds the reasons, and
   the sentences that point to it in `README.md`, `deploying.md` and
   `AGENTS.md`. CI reads the UID range from the rule.
 - The golang build image, pinned by digest in `examples/hello/Dockerfile` and
-  `.github/sandbox-probe/Dockerfile`; Dependabot bumps both in one pull
+  `ci/sandbox-probe/Dockerfile`; Dependabot bumps both in one pull
   request.
 - The hello example's Dockerfile: `examples/hello/Dockerfile` and its copy in
   `deploying.md`, which names no Go version so that a Dependabot bump of the
@@ -73,22 +74,31 @@ When you change one, update the others:
 
 ## Checking a change locally
 
-First `hadolint Dockerfile* examples/*/Dockerfile .github/*/Dockerfile`, which
-is what CI runs before it builds (as a recursive `Dockerfile*`, so a new
-Dockerfile is linted without a workflow change, and `.github/*/Dockerfile` in
-a second step, since that glob skips hidden directories). `.hadolint.yaml`
+First `hadolint Dockerfile* */*/Dockerfile` and `shellcheck -x ci/*.sh`, which
+is what CI runs before it builds (hadolint as a recursive `Dockerfile*`, so a
+new Dockerfile is linted without a workflow change; that glob skips hidden
+directories, so keep Dockerfiles out of `.github/`). `.hadolint.yaml`
 lists the rules this repository ignores and why; a rule that is wrong for one
 instruction gets a `# hadolint ignore=` comment above that instruction, with
 the reason above it. A finding in one of exeuntu's lines in the `Dockerfile`
 is handled in `.hadolint.yaml`, not by editing the line.
 
-`make build` (or `docker build -t ghcr.io/tho/exeslim:dev .`), then follow the
-"Check the image" step in `.github/workflows/build.yml`, replacing
-`${{ steps.tag.outputs.build }}` with `dev`. For the Shelley variants, also
-`docker build -f Dockerfile.shelley --build-arg BASE=ghcr.io/tho/exeslim:dev -t ghcr.io/tho/exeslim:dev-shelley .`,
-then `docker build -f Dockerfile.shelley-full --build-arg BASE=ghcr.io/tho/exeslim:dev-shelley -t ghcr.io/tho/exeslim:dev-shelley-full .`,
-and follow "Check the Shelley variants" the same way. `make run` boots the
-image under Docker with systemd as PID 1.
+Then `make check`, which runs what CI runs, on images tagged `dev`:
+
+```sh
+ci/build.sh dev            # base, hello, shelley, shelley-full
+ci/check-image.sh dev      # the base, and hello booted on it
+ci/check-shelley.sh dev    # the variants, shelley-full booted
+```
+
+`ci/build.sh dev base hello` builds only what `ci/check-image.sh` needs. CI
+differs in the tag, in `DOCKER_DEFAULT_PLATFORM=linux/amd64`, in
+`BUILDX_NO_DEFAULT_ATTESTATIONS=1`, and in taking the revision and created
+labels from the run rather than from `HEAD` and the clock; see
+`.github/workflows/build.yml`. A check
+that boots a container removes it when it exits, after dumping its journal if
+the check failed. `make run` boots the image under Docker with systemd as
+PID 1.
 
 ## Validating the hardening profile
 
@@ -100,7 +110,7 @@ disabled on a kernel or architecture that lacks them. That was last checked by
 hand on 2026-10-11, from inside a `svc-` unit on an exe.dev VM. Repeat it when
 the drop-in gains a setting or exe.dev changes its kernel.
 
-CI also runs `.github/sandbox-probe` in a `svc-` unit: the seccomp and Landlock
+CI also runs `ci/sandbox-probe` in a `svc-` unit: the seccomp and Landlock
 system calls must pass the filter, and a Landlock ruleset must refuse a read.
 That proves the filter, and Landlock on the runner's kernel only; on a runner
 without Landlock the probe prints `landlock unavailable` and the step warns
@@ -109,7 +119,7 @@ exe.dev VM the probe last passed on 2026-11-15, with Landlock ABI 6. Repeat it
 when exe.dev changes its kernel:
 
 ```sh
-docker build --platform linux/amd64 -o probe .github/sandbox-probe
+docker build --platform linux/amd64 -o probe ci/sandbox-probe
 scp probe/sandbox-probe <vm>.exe.xyz:
 ssh <vm>.exe.xyz 'sudo install -m 0755 sandbox-probe /usr/local/bin/ &&
   sudo systemd-run --quiet --wait --pipe --collect --unit=svc-sandbox-probe \
