@@ -62,8 +62,9 @@ WantedBy=multi-user.target
   a `/var/lib/<app>` symlink. The rest of the filesystem is read-only to the
   service (writes fail with `EROFS`) apart from a private `/tmp`, emptied when
   the unit stops.
-- **`HOME` is `/`**, read-only. An app that keeps its files under `~` with no
-  setting to move them can start through the base image's wrapper,
+- **`HOME` is unset**, and the user's home directory is `/`, read-only. An
+  app that keeps its files under `~` with no setting to move them can start
+  through the base image's wrapper,
   `ExecStart=/usr/local/bin/svc-exec /usr/local/bin/my-service`, which sets
   `HOME`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `XDG_STATE_HOME` under
   `$STATE_DIRECTORY` (and `XDG_CACHE_HOME` to `CacheDirectory=` if the unit
