@@ -28,9 +28,9 @@ that way:
   inside them.
 - Files exeuntu also has stay at exeuntu's path and content: `init-wrapper.sh`,
   `exe-setup.service`, `tmpfiles-tmp.conf`, `tmpfiles-shelley.conf`,
-  `shelley.service`, `shelley.socket`, `distrust-emudhra.sh`, `LICENSE`, and the
-  head of `AGENTS.md` and `Makefile` (the `check` target is appended). If one
-  must differ, say why in the commit.
+  `fstrim-timer.conf`, `shelley.service`, `shelley.socket`,
+  `distrust-emudhra.sh`, `LICENSE`, and the head of `AGENTS.md` and `Makefile`
+  (the `check` target is appended). If one must differ, say why in the commit.
 - exeslim's own files live where exeuntu has nothing: `image/`, `examples/`,
   `docs/`, `ci/`, `.github/`, `.hadolint.yaml`, `Dockerfile.shelley*`.
 
