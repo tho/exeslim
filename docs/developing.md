@@ -34,12 +34,19 @@ that way:
 - exeslim's own files live where exeuntu has nothing: `image/`, `examples/`,
   `docs/`, `ci/`, `.github/`, `.hadolint.yaml`, `Dockerfile.shelley*`.
 
+Merge only when some upstream change reaches exeslim's tree, including
+upstream deleting a file exeslim kept. If every new upstream commit touches
+only what exeslim removed, do not merge: the next merge that changes something
+brings those commits along.
+
 Resolving a merge: a conflict in the `Dockerfile` is upstream changing a line
 exeslim deleted or its neighbour; keep the deletion unless the change is
-platform wiring exe.dev depends on, in which case port it. A modify/delete
-conflict is upstream touching a file exeslim removed (`cli/`, `pi-extension/`,
-the installers): `git rm` it again. `AGENTS.md` conflicts when upstream appends
-to it: keep both. Then build and run the checks below.
+platform wiring exe.dev depends on, in which case port it, in exeslim's own
+terms if the base lacks the tool upstream uses (the git identity include is
+written without git). A modify/delete conflict is upstream touching a file
+exeslim removed (`cli/`, `pi-extension/`, the installers): `git rm` it again.
+`AGENTS.md` conflicts when upstream changes its head: take upstream's head and
+keep exeslim's sections below it. Then build and run the checks below.
 
 Deliberately not carried over, so do not port them back: the agents, their
 installers and their config directories, Go, uv, DuckDB, gh, Docker, Tailscale,
@@ -98,10 +105,9 @@ ci/check-shelley.sh dev    # the variants, shelley-full booted
 differs in the tag, in `DOCKER_DEFAULT_PLATFORM=linux/amd64`, in
 `BUILDX_NO_DEFAULT_ATTESTATIONS=1`, and in taking the revision and created
 labels from the run rather than from `HEAD` and the clock; see
-`.github/workflows/build.yml`. A check
-that boots a container removes it when it exits, after dumping its journal if
-the check failed. `make run` boots the image under Docker with systemd as
-PID 1.
+`.github/workflows/build.yml`. A check that boots a container removes it when
+it exits, after dumping its journal if the check failed. `make run` boots the
+image under Docker with systemd as PID 1.
 
 ## Validating the hardening profile
 
@@ -117,9 +123,8 @@ CI also runs `ci/sandbox-probe` in a `svc-` unit: the seccomp and Landlock
 system calls must pass the filter, and a Landlock ruleset must refuse a read.
 That proves the filter, and Landlock on the runner's kernel only; on a runner
 without Landlock the probe prints `landlock unavailable` and the step warns
-instead of failing. On an
-exe.dev VM the probe last passed on 2026-11-15, with Landlock ABI 6. Repeat it
-when exe.dev changes its kernel:
+instead of failing. On an exe.dev VM the probe last passed on 2026-11-15, with
+Landlock ABI 6. Repeat it when exe.dev changes its kernel:
 
 ```sh
 docker build --platform linux/amd64 -o probe ci/sandbox-probe
