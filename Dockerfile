@@ -167,6 +167,12 @@ USER root
 # Disable Ubuntu's default MOTD (the sudo hint, etc.)
 RUN rm -rf /etc/update-motd.d/* /etc/motd && touch /home/exedev/.hushlogin && chown exedev:exedev /home/exedev/.hushlogin
 
+# Give git the identity exe.dev writes at VM creation (see
+# https://exe.dev/docs/git-identity), as system config so that ~/.gitconfig
+# overrides it. Written by hand because the base has no git; a git installed
+# later reads it, and skips the include if the file is missing.
+RUN printf '[include]\n\tpath = /exe.dev/etc/gitconfig\n' > /etc/gitconfig
+
 # Create systemd oneshot service for /exe.dev/setup script
 COPY exe-setup.service /etc/systemd/system/exe-setup.service
 RUN chmod 644 /etc/systemd/system/exe-setup.service && \

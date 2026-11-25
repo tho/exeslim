@@ -20,9 +20,11 @@ exe.dev VM: systemd as PID 1, the `exedev` user, the setup script unit, the
 growable root filesystem, and Shelley in the variants below. That is the
 difference from plain `ubuntu:24.04`, which boots on exe.dev but with none of
 it working. On top come `ca-certificates`, `curl`, `iproute2`, `sudo`, `tzdata`
-and `locales`; `apt` works for anything else. This repository's history starts
-at exeuntu's own commits and the commits after them take things away, so
-exeuntu's changes merge in as they land ([developing](docs/developing.md)).
+and `locales`; `apt` works for anything else, and a Git installed that way
+takes the VM's [exe.dev git identity](https://exe.dev/docs/git-identity).
+This repository's history starts at exeuntu's own commits and the commits after
+them take things away, so exeuntu's changes merge in as they land
+([developing](docs/developing.md)).
 
 For a VM that runs a service: every `svc-<app>.service` a derived image installs
 runs under a systemd hardening profile ([deploying](docs/deploying.md)). A unit

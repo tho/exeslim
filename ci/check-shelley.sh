@@ -58,6 +58,8 @@ docker run --rm "$REPO:$build-shelley-full" bash -euc '
   # distrust-emudhra.sh must have applied to the exedev NSS database.
   certutil -L -d sql:/home/exedev/.pki/nssdb | grep -q "^distrusted emSign ECC Root CA - G3 *p,p,p$"
   convert -list format | grep -q HEIC
+  # The base writes /etc/gitconfig without git; git must parse it.
+  [[ $(git config --system --get include.path) == /exe.dev/etc/gitconfig ]]
   ffmpeg -hide_banner -encoders | grep -q libx264'
 
 boot "$C" "$REPO:$build-shelley-full"

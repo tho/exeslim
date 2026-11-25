@@ -65,6 +65,9 @@ When you change one, update the others:
 - The Shelley guard: `image/shelley-guard.nft`, which holds the reasons, and
   the sentences that point to it in `README.md`, `deploying.md` and
   `AGENTS.md`. CI reads the UID range from the rule.
+- The git identity include: `/etc/gitconfig` written in the `Dockerfile`, its
+  check in `ci/check-shelley.sh`, and the sentences in `README.md` and
+  `AGENTS.md`.
 - The golang build image, pinned by patch version and digest in
   `examples/hello/Dockerfile` and `ci/sandbox-probe/Dockerfile`; Dependabot
   bumps both in one pull request.

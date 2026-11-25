@@ -4,7 +4,8 @@ You are running in an exe.dev VM (https://exe.dev/docs.md).
 
 A minimal base: systemd, TLS roots, curl, `ss` (iproute2), sudo, and little
 else. **Not installed:** compiler (`build-essential`), Python, Node.js, Go, uv,
-Git, Docker, nginx, Chrome. `apt` works for anything you genuinely need.
+Git, Docker, nginx, Chrome. `apt` works for anything you genuinely need; an
+installed Git takes the VM's exe.dev identity from `/etc/gitconfig`.
 
 **Shelley image variants:** `-shelley` adds jq, sqlite3 and lsof; `-shelley-full`
 also adds Git, ffmpeg, ImageMagick and headless Chrome (`/headless-shell`), for
