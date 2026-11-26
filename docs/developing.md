@@ -22,23 +22,23 @@ The diff against exeuntu reads as deletions plus a few appended files. Keep it
 that way:
 
 - The `Dockerfile` is exeuntu's text with lines deleted. Do not reorder,
-  reformat or reword what survives; a cosmetic change is a merge conflict every
-  time upstream touches that line. Edit a surviving line only where deleting
-  requires it (words dropped from a package list, a `&& \` continuation, a
-  comment whose other half described something removed) or where the image
-  needs it in place: the `FROM` digest pin, `--no-install-recommends`, and the
-  locale and apt cleanup steps inside exeuntu's first `RUN`. exeslim's other
-  additions (the hardening drop-in, `svc-exec`, nss-systemd, `LANG`, the OCI
-  labels) are blocks between exeuntu's, not edits inside them.
+  reformat or reword what survives, since a cosmetic change is a merge conflict
+  every time upstream touches that line. Edit a surviving line only where
+  deleting requires it (words dropped from a package list, a `&& \`
+  continuation, a comment whose other half described something removed) or where
+  the image needs it in place: the `FROM` digest pin, `--no-install-recommends`,
+  and the locale and apt cleanup steps inside exeuntu's first `RUN`. exeslim's
+  other additions (the hardening drop-in, `svc-exec`, nss-systemd, `LANG`, the
+  OCI labels) are blocks between exeuntu's, not edits inside them.
 - Files exeuntu also has stay at exeuntu's path and content: `init-wrapper.sh`,
   `exe-setup.service`, `tmpfiles-tmp.conf`, `tmpfiles-shelley.conf`,
   `fstrim-timer.conf`, `shelley.service`, `shelley.socket`,
-  `distrust-emudhra.sh`, `LICENSE`, the head of `AGENTS.md`, and the
-  `Makefile` with its target and image renamed to exeslim's and the `check`
-  target appended. If one must differ, say why in the commit.
-- `README.md` is exeslim's own, at upstream's path. A conflict there is
-  upstream editing its README: keep exeslim's (`git checkout --ours README.md`)
-  and port only facts about platform wiring.
+  `distrust-emudhra.sh`, `LICENSE`, the head of `AGENTS.md`, and the `Makefile`
+  with its target and image renamed to exeslim's and the `check` target
+  appended. If one must differ, say why in the commit.
+- `README.md` is exeslim's own, at upstream's path. A conflict there is upstream
+  editing its README: keep exeslim's (`git checkout --ours README.md`) and port
+  only facts about platform wiring.
 - exeslim's own files live where exeuntu has nothing: `image/`, `examples/`,
   `docs/`, `ci/`, `.github/`, `.hadolint.yaml`, `.gitignore`,
   `Dockerfile.shelley*`.
@@ -49,7 +49,7 @@ only what exeslim removed, do not merge: the next merge that changes something
 brings those commits along.
 
 Resolving a merge: a conflict in the `Dockerfile` is upstream changing a line
-exeslim deleted or its neighbour; keep the deletion unless the change is
+exeslim deleted or its neighbour. Keep the deletion unless the change is
 platform wiring exe.dev depends on, in which case port it, in exeslim's own
 terms if the base lacks the tool upstream uses (the git identity include is
 written without git). A modify/delete conflict is upstream touching a file
@@ -63,11 +63,10 @@ Deliberately not carried over, so do not port them back: the agents, their
 installers and their config directories, Go, uv, DuckDB, gh, Docker, Tailscale,
 nginx, the MOTD, the terminfo, `unminimize`, `locales-all`, `ENV EXEUNTU=1`
 (nothing in exeuntu reads it, and this image is not exeuntu), and `.clabot`,
-upstream's CLA bot config. Also absent:
-`openssh-server`, since exe.dev supplies its own sshd from `/exe.dev/bin`; a
-firewall, since nothing listens on the network interface and exe.dev reaches
-the VM over VSOCK and loopback (the Shelley variants' one rule is between local
-users, not the network).
+upstream's CLA bot config. Also absent: `openssh-server`, since exe.dev supplies
+its own sshd from `/exe.dev/bin`, and a firewall, since nothing listens on the
+network interface and exe.dev reaches the VM over VSOCK and loopback (the
+Shelley variants' one rule is between local users, not the network).
 
 ## Facts that live in several places
 
@@ -81,17 +80,17 @@ When you change one, update the others:
 - `deploying.md` on the VM: the `Dockerfile` copies it to
   `/usr/share/doc/exeslim/deploying.md`, `AGENTS.md` points agents there, and
   `ci/check-image.sh` checks both. `AGENTS.md` keeps only what every session
-  needs; anything about writing a service goes in `deploying.md`.
+  needs, and anything about writing a service goes in `deploying.md`.
 - The Shelley variants' packages: `Dockerfile.shelley`,
-  `Dockerfile.shelley-full` and its header, the check in
-  `ci/check-shelley.sh`, and the Shelley section of `README.md`.
-- The Shelley guard: `image/shelley-guard.nft`, which holds the reasons, and
-  the sentences that point to it in `README.md`, `deploying.md` and
-  `AGENTS.md`. CI reads the UID range from the rule.
+  `Dockerfile.shelley-full` and its header, the check in `ci/check-shelley.sh`,
+  and the Shelley section of `README.md`.
+- The Shelley guard: `image/shelley-guard.nft`, which holds the reasons, and the
+  sentences that point to it in `README.md`, `deploying.md` and `AGENTS.md`. CI
+  reads the UID range from the rule.
 - The git identity include: `/etc/gitconfig` written in the `Dockerfile`, its
   check in `ci/check-shelley.sh`, and the sentence in `README.md`.
 - The golang build image, pinned by patch version and digest in
-  `examples/hello/Dockerfile` and `ci/sandbox-probe/Dockerfile`; Dependabot
+  `examples/hello/Dockerfile` and `ci/sandbox-probe/Dockerfile`, and Dependabot
   bumps both in one pull request.
 - The hello example's Dockerfile: `examples/hello/Dockerfile` and its copy in
   `deploying.md`, which names no Go version so that a Dependabot bump of the
@@ -100,13 +99,13 @@ When you change one, update the others:
 ## Checking a change locally
 
 First `hadolint Dockerfile* */*/Dockerfile` and `shellcheck -x ci/*.sh`, which
-is what CI runs before it builds (hadolint as a recursive `Dockerfile*`, so a
-new Dockerfile is linted without a workflow change; that glob skips hidden
-directories, so keep Dockerfiles out of `.github/`). `.hadolint.yaml`
-lists the rules this repository ignores and why; a rule that is wrong for one
-instruction gets a `# hadolint ignore=` comment above that instruction, with
-the reason above it. A finding in one of exeuntu's lines in the `Dockerfile`
-is handled in `.hadolint.yaml`, not by editing the line.
+is what CI runs before it builds. CI lints a recursive `Dockerfile*`, so a new
+Dockerfile needs no workflow change. The glob skips hidden directories, so keep
+Dockerfiles out of `.github/`. `.hadolint.yaml` lists the rules this repository
+ignores and why. A rule that is wrong for one instruction gets a
+`# hadolint ignore=` comment above that instruction, with the reason above it. A
+finding in one of exeuntu's lines in the `Dockerfile` is handled in
+`.hadolint.yaml`, not by editing the line.
 
 Then `make check`, which runs what CI runs, on images tagged `dev`:
 
@@ -119,8 +118,8 @@ ci/check-shelley.sh dev    # the variants, shelley-full booted
 `ci/build.sh dev base hello` builds only what `ci/check-image.sh` needs. CI
 differs in the tag, in `DOCKER_DEFAULT_PLATFORM=linux/amd64`, in
 `BUILDX_NO_DEFAULT_ATTESTATIONS=1`, and in taking the revision and created
-labels from the run rather than from `HEAD` and the clock; see
-`.github/workflows/build.yml`. A check that boots a container removes it when
+labels from the run rather than from `HEAD` and the clock (see
+`.github/workflows/build.yml`). A check that boots a container removes it when
 it exits, after dumping its journal if the check failed. `make run` boots the
 image under Docker with systemd as PID 1.
 
@@ -129,14 +128,14 @@ image under Docker with systemd as PID 1.
 CI runs `systemd-analyze security --offline=true --threshold=20` on the hello
 example's unit inside the built image, so a configuration regression fails the
 build, and boots hello under Docker. Neither shows that exe.dev's kernel
-enforces what systemd configures; several of these settings are silently
+enforces what systemd configures, and several of these settings are silently
 disabled on a kernel or architecture that lacks them. That was last checked by
 hand on 2026-10-11, from inside a `svc-` unit on an exe.dev VM. Repeat it when
 the drop-in gains a setting or exe.dev changes its kernel.
 
 CI also runs `ci/sandbox-probe` in a `svc-` unit: the seccomp and Landlock
 system calls must pass the filter, and a Landlock ruleset must refuse a read.
-That proves the filter, and Landlock on the runner's kernel only; on a runner
+That proves the filter, and Landlock on the runner's kernel only. On a runner
 without Landlock the probe prints `landlock unavailable` and the step warns
 instead of failing. On an exe.dev VM the probe last passed on 2026-11-15, with
 Landlock ABI 6. Repeat it when exe.dev changes its kernel:
@@ -150,11 +149,11 @@ ssh <vm>.exe.xyz 'sudo install -m 0755 sandbox-probe /usr/local/bin/ &&
   sudo rm -f /usr/local/bin/sandbox-probe; rm -f sandbox-probe'
 ```
 
-It must end with `landlock enforced`; `landlock unavailable` means the VM's
-kernel has no Landlock. Otherwise it names the call that failed and whether
-the filter or the kernel refused it. The `|| true` keeps the profile from
-restarting a failed probe for ever, and the last line removes the probe from
-the VM.
+It must end with `landlock enforced`. Ending with `landlock unavailable` means
+the VM's kernel has no Landlock. Otherwise it names the call that failed and
+whether the filter or the kernel refused it. The `|| true` keeps the profile
+from restarting a failed probe for ever, and the last line removes the probe
+from the VM.
 
 In prose, never use em dashes, en dashes or spaced hyphens as sentence
 interrupters. exeuntu's own lines are exempt: they are kept verbatim.

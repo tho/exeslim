@@ -50,8 +50,8 @@ WantedBy=multi-user.target
   profile, and a `User=exedev` makes `DynamicUser=` run the service as `exedev`.
 - **Install the code outside `/home`.** `/home`, `/root` and `/run/user` are
   empty to the service, so an `ExecStart=` under `~exedev` fails with
-  `203/EXEC`. A binary goes in `/usr/local/bin`, an interpreted app's code
-  under `/opt/<app>`, config under `/etc/<app>/`, all root-owned.
+  `203/EXEC`. A binary goes in `/usr/local/bin`, an interpreted app's code under
+  `/opt/<app>`, config under `/etc/<app>/`, all root-owned.
 - **Listen on `127.0.0.1:8000`.** exe.dev's proxy defaults to port 8000 on this
   image and connects from inside the VM. Other ports between 3000 and 9999 are
   reachable at `https://<vm>.exe.xyz:<port>/` by users with access to the VM.
@@ -60,25 +60,25 @@ WantedBy=multi-user.target
   a `/var/lib/<app>` symlink. The rest of the filesystem is read-only to the
   service (writes fail with `EROFS`) apart from a private `/tmp`, emptied when
   the unit stops. To move the state to another VM, `tar` that directory between
-  stopped units; the dynamic UID differs per VM, and systemd chowns the
+  stopped units. The dynamic UID differs per VM, and systemd chowns the
   directory on start.
-- **`HOME` is unset**, and the user's home directory is `/`, read-only. An
-  app that keeps its files under `~` with no setting to move them can start
-  through the base image's wrapper,
+- **`HOME` is unset**, and the user's home directory is `/`, read-only. An app
+  that keeps its files under `~` with no setting to move them can start through
+  the base image's wrapper,
   `ExecStart=/usr/local/bin/svc-exec /usr/local/bin/my-service`, which sets
   `HOME`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `XDG_STATE_HOME` under
-  `$STATE_DIRECTORY` (and `XDG_CACHE_HOME` to `CacheDirectory=` if the unit
-  has one), each unless the unit already sets it. It needs `StateDirectory=`
-  and a command it can run; without either the wrapper exits 78, which the
-  profile does not restart, so the unit fails. An app that looks its home
-  up in the user database instead of `$HOME` (OpenSSH, for one) still gets
-  `/`. It sets paths only; never export a credential from a wrapper, which
-  puts it in the environment of every child.
+  `$STATE_DIRECTORY` (and `XDG_CACHE_HOME` to `CacheDirectory=` if the unit has
+  one), each unless the unit already sets it. It needs `StateDirectory=` and a
+  command it can run. Without either, the wrapper exits 78, which the profile
+  does not restart, so the unit fails. An app that looks its home up in the user
+  database instead of `$HOME` (OpenSSH, for one) still gets `/`. It sets paths
+  only. Never export a credential from a wrapper, which puts it in the
+  environment of every child.
 - **Secrets come from `LoadCredential=`.** The unit names a root-only file and
   the app reads `$CREDENTIALS_DIRECTORY/token`, byte for byte (mind a trailing
   newline). Until the file exists the unit fails with `243/CREDENTIALS`, the
-  expected state of a fresh VM; [provisioning](#provisioning-a-secret) is
-  below. Never put secrets in the image, the unit or `Environment=`: anyone who
+  expected state of a fresh VM ([provisioning](#provisioning-a-secret) is
+  below). Never put secrets in the image, the unit or `Environment=`: anyone who
   can pull the image or run `systemctl show` can read them there.
 - **Unix sockets work.** `sd_notify()` reaches systemd, so `Type=notify` and
   `WatchdogSec=` do what they say. A local database is reachable over its
@@ -124,7 +124,7 @@ systemd-analyze security --threshold=20 svc-my-service.service
 curl -fsS http://127.0.0.1:8000/
 ```
 
-The security check fails above exposure 2.0; a unit the drop-in missed scores
+The security check fails above exposure 2.0. A unit the drop-in missed scores
 about 9.4.
 
 To update, replace the binary with `mv`, which is atomic within one filesystem,
@@ -136,8 +136,8 @@ sudo mv /usr/local/bin/.my-service.new /usr/local/bin/my-service
 sudo systemctl restart svc-my-service
 ```
 
-Keep the old binary beside it for rollback; `Restart=` never gives up on one
-that crashes. The exception is exit status 78 (`EX_CONFIG` in `sysexits.h`),
+Keep the old binary beside it for rollback, since `Restart=` never gives up on
+one that crashes. The exception is exit status 78 (`EX_CONFIG` in `sysexits.h`),
 which the profile takes as a configuration error that a retry cannot fix: the
 unit stays failed until `systemctl restart`. If the unit file changes too,
 `sudo systemctl daemon-reload` before the restart.
@@ -164,10 +164,10 @@ An agent asks the user to do this rather than handling the secret itself.
 
 ## Installing from a derived image
 
-[`examples/hello`](../examples/hello) is the complete minimal case; CI publishes
-it as `ghcr.io/tho/exeslim-hello`. The derived Dockerfile builds a static
-binary, copies it and the unit in, and enables the unit (the example pins the
-Go image by version and digest, which Dependabot keeps current):
+[`examples/hello`](../examples/hello) is the complete minimal case, and CI
+publishes it as `ghcr.io/tho/exeslim-hello`. The derived Dockerfile builds a
+static binary, copies it and the unit in, and enables the unit (the example pins
+the Go image by version and digest, which Dependabot keeps current):
 
 ```dockerfile
 ARG BASE=ghcr.io/tho/exeslim:<build-id>
@@ -223,8 +223,8 @@ Create the VM from an immutable tag or digest,
 The weekly exeslim rebuild does not reach your service by itself: rebuild the
 derived image on a newer build id to pick up base patches.
 
-**Stateless:** replace the VM (`ssh exe.dev rm`, then `new` under the same
-name) and provision its secrets again; they lived on the old VM. For no
+**Stateless:** replace the VM (`ssh exe.dev rm`, then `new` under the same name)
+and provision its secrets again, since they lived on the old VM. For no
 downtime, create under another name, check, remove the old one.
 
 **Stateful:** update in place, as [on the VM](#installing-on-the-vm): `scp`
@@ -243,9 +243,9 @@ the binary over and run the same `install`, `mv` and `restart` through
 | `Read-only file system` | A write outside `$STATE_DIRECTORY` and `/tmp` |
 | `Operation not permitted` from a system call | `SystemCallFilter=` or a capability the profile drops |
 | `Address family not supported` | A netlink or packet socket, which `RestrictAddressFamilies=` refuses |
-| A JIT crashes or will not start | `MemoryDenyWriteExecute=`; see [agent runtimes](#agent-runtimes) |
-| Files expected under `~` are missing | `HOME` is unset; start through `svc-exec` |
-| `/proc/meminfo` or `/proc/cpuinfo` missing | `ProcSubset=pid`; loosen with `ProcSubset=all` |
+| A JIT crashes or will not start | `MemoryDenyWriteExecute=` (see [agent runtimes](#agent-runtimes)) |
+| Files expected under `~` are missing | `HOME` is unset. Start through `svc-exec` |
+| `/proc/meminfo` or `/proc/cpuinfo` missing | `ProcSubset=pid`. Loosen with `ProcSubset=all` |
 | `Connection refused` on `127.0.0.1:9999` | The Shelley guard, on purpose |
 | Exposure about 9.4 | The unit is not named `svc-<app>.service` |
 | Runs as `exedev`, not `svc-<app>` | `User=` in the unit |
@@ -258,27 +258,26 @@ can read the app's config and credentials, `$CREDENTIALS_DIRECTORY` included,
 and rewrite its policy. Only the app's own sandbox stands between them, so:
 
 - **Turn on its Landlock or seccomp sandbox**, in a build that includes it.
-- **Keep the workspace apart from config.** A directory under
-  `$STATE_DIRECTORY` that holds neither config nor secrets, so the sandbox can
-  leave those out.
-- **Test that it refuses.** Ask the agent to read its own config file; anything
+- **Keep the workspace apart from config.** A directory under `$STATE_DIRECTORY`
+  that holds neither config nor secrets, so the sandbox can leave those out.
+- **Test that it refuses.** Ask the agent to read its own config file. Anything
   but a permission error means its commands run unconfined.
 - **Bake in the tools it runs.** Its commands inherit the profile: no `apt`, no
   `sudo`, nothing writable outside the state directory and `/tmp`.
 - **JITs need `MemoryDenyWriteExecute=no`**: WASM plugins, Node, Chromium. That
-  loosens the profile for the whole unit; add it in a drop-in only if the
+  loosens the profile for the whole unit, so add it in a drop-in only if the
   feature is needed.
 
 ## What the profile does not stop
 
 Egress is open (add `IPAddressDeny=any` and `IPAddressAllow=localhost ...` in a
-drop-in if that matters; keep `localhost`, the proxy connects over it). The
-service can read `/usr` and world-readable `/etc`. It can connect to any Unix
-socket its UID may open, and to abstract-namespace sockets, which have no
-permissions to check; only the system bus is closed. It can connect to
-anything listening on loopback except, on the Shelley variants, Shelley's port
-9999 ([`image/shelley-guard.nft`](../image/shelley-guard.nft), on the VM
+drop-in if that matters, but keep `localhost`, which the proxy connects over).
+The service can read `/usr` and world-readable `/etc`. It can connect to any
+Unix socket its UID may open, and to abstract-namespace sockets, which have no
+permissions to check. Only the system bus is closed. It can connect to anything
+listening on loopback except, on the Shelley variants, Shelley's port 9999
+([`image/shelley-guard.nft`](../image/shelley-guard.nft), on the VM
 `/etc/shelley-guard.nft`, says why). It owns its own state and credentials. It
-can fill the disk; only the ext4 root reserve, which root alone can use, keeps
-journald and `sudo` working then. Setup scripts, other units and SSH sessions
-run without the profile. No Docker: its daemon is root-equivalent.
+can fill the disk, and then only the ext4 root reserve, which root alone can
+use, keeps journald and `sudo` working. Setup scripts, other units and SSH
+sessions run without the profile. No Docker: its daemon is root-equivalent.
