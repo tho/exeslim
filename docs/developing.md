@@ -23,16 +23,25 @@ that way:
 
 - The `Dockerfile` is exeuntu's text with lines deleted. Do not reorder,
   reformat or reword what survives; a cosmetic change is a merge conflict every
-  time upstream touches that line. exeslim's additions (the locale, the
-  hardening drop-in, the OCI labels) are blocks between exeuntu's, not edits
-  inside them.
+  time upstream touches that line. Edit a surviving line only where deleting
+  requires it (words dropped from a package list, a `&& \` continuation, a
+  comment whose other half described something removed) or where the image
+  needs it in place: the `FROM` digest pin, `--no-install-recommends`, and the
+  locale and apt cleanup steps inside exeuntu's first `RUN`. exeslim's other
+  additions (the hardening drop-in, `svc-exec`, nss-systemd, `LANG`, the OCI
+  labels) are blocks between exeuntu's, not edits inside them.
 - Files exeuntu also has stay at exeuntu's path and content: `init-wrapper.sh`,
   `exe-setup.service`, `tmpfiles-tmp.conf`, `tmpfiles-shelley.conf`,
   `fstrim-timer.conf`, `shelley.service`, `shelley.socket`,
-  `distrust-emudhra.sh`, `LICENSE`, and the head of `AGENTS.md` and `Makefile`
-  (the `check` target is appended). If one must differ, say why in the commit.
+  `distrust-emudhra.sh`, `LICENSE`, the head of `AGENTS.md`, and the
+  `Makefile` with its target and image renamed to exeslim's and the `check`
+  target appended. If one must differ, say why in the commit.
+- `README.md` is exeslim's own, at upstream's path. A conflict there is
+  upstream editing its README: keep exeslim's (`git checkout --ours README.md`)
+  and port only facts about platform wiring.
 - exeslim's own files live where exeuntu has nothing: `image/`, `examples/`,
-  `docs/`, `ci/`, `.github/`, `.hadolint.yaml`, `Dockerfile.shelley*`.
+  `docs/`, `ci/`, `.github/`, `.hadolint.yaml`, `.gitignore`,
+  `Dockerfile.shelley*`.
 
 Merge only when some upstream change reaches exeslim's tree, including
 upstream deleting a file exeslim kept. If every new upstream commit touches
@@ -44,14 +53,17 @@ exeslim deleted or its neighbour; keep the deletion unless the change is
 platform wiring exe.dev depends on, in which case port it, in exeslim's own
 terms if the base lacks the tool upstream uses (the git identity include is
 written without git). A modify/delete conflict is upstream touching a file
-exeslim removed (`cli/`, `pi-extension/`, the installers): `git rm` it again.
-`AGENTS.md` conflicts when upstream changes its head: take upstream's head and
-keep exeslim's sections below it. Then build and run the checks below.
+exeslim removed (`cli/`, `pi-extension/`, the installers, `.clabot`): `git rm`
+it again. `AGENTS.md` conflicts when upstream changes its head: take upstream's
+head and keep exeslim's sections below it. A `Makefile` conflict is upstream
+changing a line exeslim renamed: take the change and keep the exeslim name and
+tag. Then build and run the checks below.
 
 Deliberately not carried over, so do not port them back: the agents, their
 installers and their config directories, Go, uv, DuckDB, gh, Docker, Tailscale,
-nginx, the MOTD, the terminfo, `unminimize`, `locales-all` and `ENV EXEUNTU=1`
-(nothing in exeuntu reads it, and this image is not exeuntu). Also absent:
+nginx, the MOTD, the terminfo, `unminimize`, `locales-all`, `ENV EXEUNTU=1`
+(nothing in exeuntu reads it, and this image is not exeuntu), and `.clabot`,
+upstream's CLA bot config. Also absent:
 `openssh-server`, since exe.dev supplies its own sshd from `/exe.dev/bin`; a
 firewall, since nothing listens on the network interface and exe.dev reaches
 the VM over VSOCK and loopback (the Shelley variants' one rule is between local

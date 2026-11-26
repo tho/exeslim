@@ -168,9 +168,9 @@ USER root
 RUN rm -rf /etc/update-motd.d/* /etc/motd && touch /home/exedev/.hushlogin && chown exedev:exedev /home/exedev/.hushlogin
 
 # Give git the identity exe.dev writes at VM creation (see
-# https://exe.dev/docs/git-identity), as system config so that ~/.gitconfig
-# overrides it. Written by hand because the base has no git; a git installed
-# later reads it, and skips the include if the file is missing.
+# https://exe.dev/docs/git-identity), as system config so that anything in
+# ~/.gitconfig overrides it. git skips the include if the file is missing.
+# Written by hand because the base has no git; a git installed later reads it.
 RUN printf '[include]\n\tpath = /exe.dev/etc/gitconfig\n' > /etc/gitconfig
 
 # Create systemd oneshot service for /exe.dev/setup script
@@ -213,7 +213,8 @@ RUN chown exedev:exedev /home/exedev/.config/shelley/AGENTS.md
 RUN : > /etc/machine-id && \
 	ln -sf /etc/machine-id /var/lib/dbus/machine-id
 
-# Expose the web server port. 9999 is Shelley's; the Shelley variants add it.
+# Expose the web server ports
+# 9999 is Shelley's; the Shelley variants add it.
 EXPOSE 8000
 
 LABEL "exe.dev/login-user"="exedev"
