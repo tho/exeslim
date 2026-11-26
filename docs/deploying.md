@@ -6,6 +6,12 @@ lives in `/var/lib/<app>`, created by `StateDirectory=`, and its secrets in
 root-only files under `/etc/<app>/`, provisioned on the VM. Nothing else on the
 VM belongs to the service.
 
+On a VM built from exeslim this file is `/usr/share/doc/exeslim/deploying.md`,
+as of the VM's image. Its links are relative to the repository,
+https://github.com/tho/exeslim; on the VM the profile they cite is
+`/etc/systemd/system/svc-.service.d/50-hardening.conf`, and the Shelley guard
+is `/etc/shelley-guard.nft`.
+
 ## The unit
 
 [`examples/hello`](../examples/hello) is the complete minimal case; CI publishes

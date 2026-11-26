@@ -29,6 +29,14 @@ docker run --rm "$IMAGE" bash -euc '
   [[ ! -s /etc/machine-id && $(readlink /var/lib/dbus/machine-id) == /etc/machine-id ]]
   touch /tmp/keep && systemd-tmpfiles --remove && test -e /tmp/keep'
 
+# AGENTS.md sends agents to the image's copy of deploying.md; it must be there
+# and match the repository's.
+readonly DEPLOYING_DOC=/usr/share/doc/exeslim/deploying.md
+grep -qF "$DEPLOYING_DOC" AGENTS.md ||
+  die "AGENTS.md does not point to $DEPLOYING_DOC"
+docker run --rm "$IMAGE" cat "$DEPLOYING_DOC" | cmp -s - docs/deploying.md ||
+  die "$DEPLOYING_DOC is missing or differs from docs/deploying.md"
+
 # Threshold 20 is exposure 2.0; a unit the drop-in misses scores about 9.4.
 docker run --rm "$HELLO" bash -euc '
   systemd-analyze verify svc-hello.service

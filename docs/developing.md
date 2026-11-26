@@ -74,19 +74,22 @@ users, not the network).
 When you change one, update the others:
 
 - The hardening profile: `image/svc-hardening.conf`, the rules in
-  `deploying.md`, and the summary in `AGENTS.md`.
-- `svc-exec`: `image/svc-exec.sh`, the `HOME` bullet in `deploying.md`, the rule
-  in `AGENTS.md`, and its check in `ci/check-image.sh`.
+  `deploying.md`, and the three rules `AGENTS.md` repeats (the `svc-` name, no
+  `User=`, no secrets in `Environment=`).
+- `svc-exec`: `image/svc-exec.sh`, the `HOME` bullet in `deploying.md`, and its
+  check in `ci/check-image.sh`.
+- `deploying.md` on the VM: the `Dockerfile` copies it to
+  `/usr/share/doc/exeslim/deploying.md`, `AGENTS.md` points agents there, and
+  `ci/check-image.sh` checks both. `AGENTS.md` keeps only what every session
+  needs; anything about writing a service goes in `deploying.md`.
 - The Shelley variants' packages: `Dockerfile.shelley`,
   `Dockerfile.shelley-full` and its header, the check in
-  `ci/check-shelley.sh`, and the Shelley sections of `README.md` and
-  `AGENTS.md`.
+  `ci/check-shelley.sh`, and the Shelley section of `README.md`.
 - The Shelley guard: `image/shelley-guard.nft`, which holds the reasons, and
   the sentences that point to it in `README.md`, `deploying.md` and
   `AGENTS.md`. CI reads the UID range from the rule.
 - The git identity include: `/etc/gitconfig` written in the `Dockerfile`, its
-  check in `ci/check-shelley.sh`, and the sentences in `README.md` and
-  `AGENTS.md`.
+  check in `ci/check-shelley.sh`, and the sentence in `README.md`.
 - The golang build image, pinned by patch version and digest in
   `examples/hello/Dockerfile` and `ci/sandbox-probe/Dockerfile`; Dependabot
   bumps both in one pull request.

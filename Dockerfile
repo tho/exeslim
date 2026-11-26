@@ -201,6 +201,9 @@ COPY --chmod=0644 image/svc-hardening.conf /etc/systemd/system/svc-.service.d/50
 # Gives a svc- unit a writable HOME. See docs/deploying.md.
 COPY --chmod=0755 image/svc-exec.sh /usr/local/bin/svc-exec
 
+# The rules for svc- units, matching this image, where AGENTS.md points agents.
+COPY --chmod=0644 docs/deploying.md /usr/share/doc/exeslim/deploying.md
+
 COPY AGENTS.md /home/exedev/.config/shelley/AGENTS.md
 RUN chown exedev:exedev /home/exedev/.config/shelley/AGENTS.md
 
