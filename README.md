@@ -26,9 +26,9 @@ This repository's history starts at exeuntu's own commits and the commits after
 them take things away, so exeuntu's changes merge in as they land
 ([developing](docs/developing.md)).
 
-For a VM that runs a service: every `svc-<app>.service` a derived image installs
-runs under a systemd hardening profile ([deploying](docs/deploying.md)). A unit
-with any other name runs unhardened.
+For a VM that runs a service: every `svc-<app>.service`, installed on the VM or
+by a derived image, runs under a systemd hardening profile
+([deploying](docs/deploying.md)). A unit with any other name runs unhardened.
 
 ## Shelley
 
@@ -81,8 +81,8 @@ access token with `read:packages`:
 
 ## Docs
 
-- [Deploying](docs/deploying.md): writing a hardened `svc-<app>` unit, secrets,
-  CI checks, updating.
+- [Deploying](docs/deploying.md): writing a hardened `svc-<app>` unit,
+  installing it on a VM or in a derived image, secrets, CI checks, failures.
 - [Developing](docs/developing.md): working on this repository, merging
   exeuntu, validating the hardening profile.
 
